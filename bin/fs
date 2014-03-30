@@ -1,0 +1,585 @@
+#!/usr/bin/env python
+
+import os
+import sys
+import tty
+import termios
+import heapq
+import argparse
+import curses
+import functools
+import fcntl
+import struct
+import fnmatch
+import re
+import itertools
+import collections
+try:
+    from StringIO import StringIO # Python 2 legacy support: StringIO in this module is the one needed (not io)
+except ImportError:
+    from io import StringIO # Python 3
+try:
+    import fsnix.util as util
+    walk = util.walk
+except ImportError:
+    walk = os.walk
+if sys.version_info.major >= 3:
+    unicode_str = lambda x: str(x)
+else:
+    unicode_str = lambda x: unicode(x)
+
+##############################################################################
+## Util.py
+
+def truncate_front(line, length=70):
+    reduce_amt = len(line) - length
+    # If it already fits
+    if reduce_amt <= 0 or length <= 0:
+        return line
+
+    reduce_amt += 3 # for the ellipsis
+    return '...'+line[reduce_amt:]
+
+def truncate_middle(line, length=70):
+    reduce_amt = len(line) - length
+
+    # If it already fits
+    if reduce_amt <= 0 or length <= 0:
+        return line
+
+    reduce_amt += 3 # for the ellipsis
+
+    start = (len(line) / 2) - (reduce_amt / 2)
+    end = start + reduce_amt
+    return "%s...%s" % (line[:start], line[end:])
+
+def rec_dir_up(dir):
+    if os.path.isdir(dir):
+        while True:
+            yield dir
+            newdir = os.path.split(dir)[0]
+            if newdir == dir: break
+            dir = newdir
+
+def highlight(v, query, color="green"):
+    i = v.lower().rfind(query.lower())
+    if query and i > -1:
+        left = v[:i]
+        lq = len(query)
+        highlight = v[i:i+lq]
+        right = v[i+lq:]
+        return [ left, CString(highlight, color), right ]
+
+    return [v]
+
+##############################################################################
+## Searcher.py
+
+class Output(object):
+    def init(self):
+        raise NotImplementedError()
+
+    def clear(self):
+        raise NotImplementedError()
+
+    def printQuery(self, q):
+        raise NotImplementedError()
+
+    def printItem(self, item, selected, query):
+        raise NotImplementedError()
+
+    def flush(self):
+        raise NotImplementedError()
+
+    def cleanup(self):
+        raise NotImplementedError()
+
+class ScreenPrinter(Output):
+    def __init__(self, printf):
+        self.printf = printf
+
+    def init(self):
+        pass
+
+    def cleanup(self):
+        pass
+
+    def clear(self):
+        print("")
+
+    def printQuery(self, q):
+        print("$ " + q)
+
+    def printItem(self, idx, item, selected, query):
+        prefix = "*" if selected else " "
+        print("{} - {}".format(prefix, self.printf(item, query)))
+
+    def flush(self):
+        pass
+
+class CursesPrinter(Output):
+    def __init__(self, printf):
+        self.printf = printf
+        self.querylen = 0
+
+    def init(self):
+        self.window = curses.initscr()
+        curses.start_color()
+        curses.use_default_colors()
+        curses.noecho()
+
+    def cleanup(self):
+        curses.echo()
+        curses.endwin()
+
+    def printQuery(self, query):
+        q = "$ " + query
+        self.querylen = len(q)
+        self.window.addstr(0, 0, q)
+
+    def printItem(self, idx, item, selected, query):
+        flags = curses.A_BOLD if selected else curses.A_NORMAL
+        self.window.move(1 + idx, 0)
+        for t in self.convert(self.printf(item, query)):
+            if not t.text:
+                continue
+            if t.fcolor == t.bcolor == -1:
+                self.window.addstr(t.text, t.weight | flags)
+            else:
+                curses.init_pair(1, t.fcolor, t.bcolor)
+                self.window.addstr(t.text, curses.color_pair(1) | t.weight | flags)
+
+    def convert(self, text):
+        if not isinstance(text, list):
+            text = [text]
+
+        r = []
+        for t in text:
+            r.append(t if isinstance(t, CString) else CString(t))
+
+        return r
+
+    def clear(self):
+        self.window.clear()
+
+    def flush(self):
+        self.window.move(0, self.querylen)
+        self.window.refresh()
+
+class CString(object):
+    __slots__ = ('text', 'fcolor', 'bcolor', "weight")
+
+    colors = {
+        "default": -1,
+        "black": curses.COLOR_BLACK,
+        "cyan": curses.COLOR_CYAN,
+        "magenta": curses.COLOR_MAGENTA,
+        "white": curses.COLOR_WHITE,
+        "blue": curses.COLOR_BLUE,
+        "green": curses.COLOR_GREEN,
+        "red": curses.COLOR_RED,
+        "yellow": curses.COLOR_YELLOW
+    }
+
+    weights = {
+        "alt": curses.A_ALTCHARSET,
+        "blink": curses.A_BLINK,
+        "bold": curses.A_BOLD,
+        "dim": curses.A_DIM,
+        "normal": curses.A_NORMAL,
+        "reverse": curses.A_REVERSE,
+        "standout": curses.A_STANDOUT,
+        "underlined": curses.A_UNDERLINE
+    }
+
+    def __init__(self, text, fcolor="default", bcolor="default", weight="normal"):
+        self.text = unicode_str(text)
+        self.fcolor = self.colors.get(fcolor, -1)
+        self.bcolor = self.colors.get(bcolor, -1)
+        self.weight = self.weights[weight]
+
+class CharInput(object):
+    def __call__(self):
+        raise NotImplementedError()
+
+class GetchUnix(CharInput):
+    def __init__(self):
+        import tty, sys
+        self.fd = sys.stdin.fileno()
+
+    def __call__(self):
+        old_settings = termios.tcgetattr(self.fd)
+        try:
+            tty.setraw(sys.stdin.fileno())
+            ch = sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(self.fd, termios.TCSADRAIN, old_settings)
+        return ch
+
+class Ranker(object):
+    def __init__(self, query):
+        self.query = query
+
+    def rank(self, item):
+        raise NotImplementedError()
+
+class Searcher(object):
+    def __init__(self, ranker, output):
+        self.ranker = ranker
+        self.output = output
+
+    def _newHeap(self, query, curHeap):
+        newHeap = []
+        ranker = self.ranker(query)
+        for w, item in curHeap:
+            score = ranker.rank(item)
+            if score is not None:
+                heapq.heappush(newHeap, (score, item))
+        return newHeap
+
+    def _topItems(self, heap, N=5):
+        h = heap[:]
+        items = []
+        for _ in range(N):
+            if len(h) == 0:
+                break
+            w, item  = heapq.heappop(h)
+            items.append(item)
+        return items
+
+    def _loop(self, curHeaps, getchar, N):
+        heapq.heapify(curHeaps[0])
+
+        cur = ""
+        selected = 0
+        while True:
+            nextchar = getchar()
+
+            # Ansi escape for arrows
+            if ord(nextchar) == 27:
+                getchar()
+                nextchar = ord(getchar())
+
+                # Up/down
+                if nextchar == 66:
+                    itemsShown = min(N, len(curHeaps[-1])) - 1
+                    selected = min(itemsShown, selected + 1)
+                elif nextchar == 65:
+                    selected = max(0, selected - 1)
+
+            else :
+                # Selected
+                if nextchar == '\r':
+                    h = curHeaps[-1]
+                    for _ in range(selected):
+                        if not h: break
+                        heapq.heappop(h)
+
+                    return heapq.heappop(h)[1] if h else None
+
+                selected = 0
+
+                # Escape code
+                if ord(nextchar) in (3,4, 28, 26):
+                    raise KeyboardInterrupt()
+
+                # Delete/backspace
+                if ord(nextchar) in (8, 127):
+                    if cur != "":
+                        cur = cur[:-1]
+                        curHeaps.pop()
+                else:
+                    cur += nextchar
+                    curHeaps.append(self._newHeap(cur, curHeaps[-1]))
+
+            self._echo(cur, curHeaps[-1], selected, N)
+
+    def _echo(self, cur, heap, selected, N):
+        self.output.clear()
+        self.output.printQuery(cur)
+
+        for i, item in enumerate(self._topItems(heap, N)):
+            self.output.printItem(i, item, i==selected, cur)
+
+        self.output.flush()
+
+
+    def run(self, items, rows, input=GetchUnix):
+        self.output.init()
+        try:
+            heap = [(0, i) for i in items]
+            heap.sort()
+            self._echo("", heap, 0, N=rows)
+            return self._loop([heap], GetchUnix(), rows)
+        finally:
+            self.output.cleanup()
+
+
+##############################################################################
+## DirectorySource.py
+
+File = collections.namedtuple("File", "dir,name,sname")
+class DirectorySource(object):
+
+    def __init__(self, dir=".", ignore_directories=True, ignore_files=True, git_ignore=True):
+        self.ignore_directories = ignore_directories
+        self.ignore_files = ignore_files
+        self.git_ignore = git_ignore
+        self.startDir = dir
+        self.filters = []
+        if git_ignore:
+            self.find_parent_gis()
+
+    def find_parent_gis(self):
+        dirs = rec_dir_up(self.startDir)
+        next(dirs)
+        # dirs.next()
+        for dirname in dirs:
+            pgi = os.path.join(dirname, '.gitignore')
+            if os.path.isfile(pgi):
+                self.filters.append(GitIgnoreFilter(dirname, '.gitignore'))
+        self.filters.reverse()
+
+    def fetch(self):
+        lst = []
+        for dirname, dirs, filenames in walk(self.startDir):
+            names = []
+            if not self.ignore_files:
+                names = filenames
+            if not self.ignore_directories:
+                names.extend(dirs)
+
+            if self.git_ignore and '.gitignore' in filenames:
+                gif = GitIgnoreFilter(dirname, '.gitignore')
+                self.filters.append((dirname, gif))
+
+            while self.filters:
+                path, _ = self.filters[-1]
+                if dirname.startswith(path): break
+                self.filters.pop()
+
+            fltr = None
+            if self.filters:
+                fltr = self.filters[-1][1]
+
+            if fltr is None:
+                files = (File(dirname, name, name.lower()) for name in names)
+            else:
+                files = (File(dirname, name, name.lower())
+                        for name in names if fltr(name, dirname))
+            lst.extend(files)
+
+            # have to delete the names manually
+            if fltr is not None:
+                for i in range(len(dirs) - 1, -1, -1):
+                    if not fltr(dirs[i], dirname):
+                        del dirs[i]
+
+        return lst
+
+class GitIgnoreFilter(object):
+    # Optimization
+    lastdir = None
+    last_path_filter = None
+
+    globchars = re.compile('[*\[\]?]')
+    def __init__(self, dirname, filename):
+        self.dirname = dirname
+        self.fn = os.path.join(dirname, filename)
+        path_filters = []
+        glob_filters = []
+        exact_filters = set(['.git'])
+        with open(self.fn) as f:
+            gc = self.globchars
+            for fn in f:
+                if fn.startswith('#'):
+                    continue
+
+                fn = fn.strip()
+                if fn.startswith('/'):
+                    path_filters.append(fn)
+                elif gc.search(fn) is not None:
+                    glob_filters.append(fnmatch.translate(fn.strip()))
+                else:
+                    exact_filters.add(fn)
+
+        if glob_filters:
+            self.glob_filters = [re.compile('|'.join(glob_filters))]
+        else:
+            self.glob_filters = []
+
+        self.exact_filters = exact_filters
+        self.path_filters = self.setup_path_filters(path_filters)
+
+    def setup_path_filters(self, path_filters):
+        # We can currently glob on only filename positions
+        dirmaps = {}
+        for pf in path_filters:
+            while pf.endswith('/'):
+                pf = pf[:-1]
+
+            dirname, basename = os.path.split(pf)
+            dm = os.path.join(self.dirname, dirname.lstrip('/'))
+            glob = fnmatch.translate(basename.strip())
+            if dm in dirmaps:
+                dirmaps[dm].append(glob)
+            else:
+                dirmaps[dm] = [glob]
+
+        # Build glob maps
+        for k in dirmaps.keys():
+            vs = dirmaps[k]
+            dirmaps[k] = re.compile('|'.join(vs))
+
+        return dirmaps
+
+    def __call__(self, fn, dirname):
+        # check exact
+        if fn in self.exact_filters:
+            return False
+        # Check global globs
+        for f in self.glob_filters:
+            if f.match(fn) is not None:
+                return False
+
+        lpf = self.path_filters.get(dirname)
+
+        # check path dependent globs
+        if lpf is not None and lpf.match(fn) is not None:
+            return False
+
+        return True
+
+class SimpleRanker(Ranker):
+
+    ws_query = False
+    inc_path = False
+    weight_f = staticmethod(lambda f: f.dir.count(os.sep) ** 0.5)
+
+    def __init__(self, query):
+        self.qs = query.lower()
+        if self.ws_query:
+            self.qs = self.qs.split()
+        else:
+            self.qs = [self.qs]
+
+    def rank_part(self, q, part):
+        if q not in part:
+            return None
+
+        score = (len(part) - len(q)) ** 0.5
+        score -= 1.0 if part.startswith(q) else 0.0
+        score -= 1.0 if part.endswith(q) else 0.0
+        return score
+
+    def rank(self, item):
+        if self.inc_path:
+            part = os.path.join(item.dir.lower(), item.sname)
+        else:
+            part = item.sname
+
+        agg_score = 0.0
+        for q in self.qs:
+            score = self.rank_part(q, part)
+            if score is None:
+                return None
+            agg_score += score
+
+        return agg_score + self.weight_f(item)
+
+    @staticmethod
+    def new(ws_query, inc_path):
+        return type('SimpleRanker', (SimpleRanker,),
+                    dict(ws_query=ws_query, inc_path=inc_path))
+
+def FilePrinter(f, query, length):
+    v = truncate_middle(os.path.join(f.dir, f.name), length)
+    return highlight(v, query)
+
+
+##############################################################################
+## Console.py
+
+def getDims():
+    env = os.environ
+    def ioctl_GWINSZ(fd):
+        try:
+            cr = struct.unpack('hh', fcntl.ioctl(fd, termios.TIOCGWINSZ, '1234'))
+        except:
+            return
+        return cr
+
+    return ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2) or (25, 80)
+
+##############################################################################
+## Main Code
+
+class Runner(object):
+    def __init__(self, args):
+        self.rows, self.columns = getDims()
+        self.args= args
+
+    def find(self):
+        raise NotImplementedError()
+
+    def run(self):
+        filename = self.find()
+        if filename is not None:
+            if self.args.s is not None:
+                with open(self.args.s, 'w') as f:
+                     f.write(filename)
+            else:
+                v = os.environ['EDITOR']
+                os.execvp(v, [v, filename])
+
+class DirRun(Runner):
+
+    def find(self):
+
+        git_ignore = self.args.g
+        if self.args.fileType == 'all':
+            ds = DirectorySource(ignore_directories=False,
+                    ignore_files=False, git_ignore=git_ignore)
+        elif self.args.fileType == 'files':
+            ds = DirectorySource(ignore_files=False, git_ignore=git_ignore)
+        else:
+            ds = DirectorySource(ignore_directories=False, git_ignore=git_ignore)
+
+        items = ds.fetch()
+
+        f = functools.partial(FilePrinter, length=self.columns)
+        sr = SimpleRanker.new(self.args.w, self.args.p)
+        s = Searcher(sr, CursesPrinter(f))
+        try:
+            found = s.run(items, self.rows - 3)
+        except KeyboardInterrupt:
+            sys.exit(0)
+
+        if found is not None:
+            found = os.path.join(found.dir, found.name)
+        return found
+
+def build_arg_parser():
+    parser = argparse.ArgumentParser(description='Quickfind on various archives.')
+    parser.add_argument('-s',
+            help='Writes the file to provided file instead of executing it.')
+    parser.add_argument('-g',
+            action="store_false", help='Do not filter out files in .gitignore')
+    parser.add_argument('-w',
+            action="store_true", help='White space separates multiple queries')
+    parser.add_argument('-p',
+            action="store_true", help='Match also on path')
+
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument('-d', action="store_const", dest="fileType", const="dirs",
+                        help='Directories only.')
+    group.add_argument('-a', action="store_const", dest="fileType", const="all",
+                        help='Both files and directories.')
+    parser.set_defaults(fileType="files")
+
+    return parser.parse_args()
+
+if __name__ == '__main__':
+    args = build_arg_parser()
+    runner = DirRun(args)
+    runner.run()
