@@ -1,12 +1,12 @@
 fuzzysnake
 =========
 
-A Fuzzy-finder for the terminal. A single-file pure-Python (2.7 and 3.4) file-only version of
-`quickfind <https://github.com/Refefer/quickfind>`_ .  List, filter, and open
-files for editing from your shell like CtrlP for Vim. The single-file
-pure-Python design constraint ensures extreme deployment ease and portability:
-simply copy the application ("`bin/fs`") to anywhere on your system PATH and
-you are good to go!
+A Fuzzy-finder for the terminal. A single-file pure-Python (2.7 and 3.4)
+file-only version of `quickfind <https://github.com/Refefer/quickfind>`_ .
+List, filter, and open files for editing from your shell like CtrlP for Vim.
+The single-file pure-Python design constraint ensures extreme deployment ease
+and portability: simply copy the application ("`bin/fs`") to anywhere on your
+system PATH and you are good to go!
 
 Install
 -------
@@ -77,5 +77,16 @@ Tricks
 Acknowledgements
 ----------------
 
-_fuzzysnake_ is heavily-based on and lightly-modified from `quickfind
+`fuzzysnake` is heavily-based on and lightly-modified from `quickfind
 <https://github.com/Refefer/quickfind>`_, by Andrew Stanton.
+
+Differences from `quickfind`:
+
+    - Pure-Python with no external dependencies (e.g., fsnix [though this will
+      be used if available], python-ctags).
+    - Python 3.x compatible.
+    - Single-file implementation.
+    - Uses "`curses`" for screen-input: more responsive to, e.g. "`ESC`" or
+      "`Ctrl-C`" for cancellation.
+    - Does *not* search for tags.
+    - If "`fsnix`" is not installed, *much* slower.

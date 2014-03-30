@@ -2,7 +2,6 @@
 
 import os
 import sys
-import tty
 import termios
 import heapq
 import argparse
@@ -75,49 +74,8 @@ def highlight(v, query, color="green"):
 ##############################################################################
 ## Searcher.py
 
-class Output(object):
-    def init(self):
-        raise NotImplementedError()
+class CursesPrinter(object):
 
-    def clear(self):
-        raise NotImplementedError()
-
-    def printQuery(self, q):
-        raise NotImplementedError()
-
-    def printItem(self, item, selected, query):
-        raise NotImplementedError()
-
-    def flush(self):
-        raise NotImplementedError()
-
-    def cleanup(self):
-        raise NotImplementedError()
-
-class ScreenPrinter(Output):
-    def __init__(self, printf):
-        self.printf = printf
-
-    def init(self):
-        pass
-
-    def cleanup(self):
-        pass
-
-    def clear(self):
-        print("")
-
-    def printQuery(self, q):
-        print("$ " + q)
-
-    def printItem(self, idx, item, selected, query):
-        prefix = "*" if selected else " "
-        print("{} - {}".format(prefix, self.printf(item, query)))
-
-    def flush(self):
-        pass
-
-class CursesPrinter(Output):
     def __init__(self, printf):
         self.printf = printf
         self.querylen = 0
@@ -198,24 +156,6 @@ class CString(object):
         self.bcolor = self.colors.get(bcolor, -1)
         self.weight = self.weights[weight]
 
-class CharInput(object):
-    def __call__(self):
-        raise NotImplementedError()
-
-class GetchUnix(CharInput):
-    def __init__(self):
-        import tty, sys
-        self.fd = sys.stdin.fileno()
-
-    def __call__(self):
-        old_settings = termios.tcgetattr(self.fd)
-        try:
-            tty.setraw(sys.stdin.fileno())
-            ch = sys.stdin.read(1)
-        finally:
-            termios.tcsetattr(self.fd, termios.TCSADRAIN, old_settings)
-        return ch
-
 class Ranker(object):
     def __init__(self, query):
         self.query = query
@@ -224,9 +164,20 @@ class Ranker(object):
         raise NotImplementedError()
 
 class Searcher(object):
+
     def __init__(self, ranker, output):
         self.ranker = ranker
         self.output = output
+
+    def _getch(self, blocking=True):
+        if blocking:
+            self.output.window.timeout(-1)
+        else:
+            self.output.window.timeout(100)
+        c = self.output.window.getch()
+        if blocking: # restore
+            self.output.window.timeout(-1)
+        return c
 
     def _newHeap(self, query, curHeap):
         newHeap = []
@@ -247,29 +198,40 @@ class Searcher(object):
             items.append(item)
         return items
 
-    def _loop(self, curHeaps, getchar, N):
+    def _loop(self, curHeaps, N):
         heapq.heapify(curHeaps[0])
 
         cur = ""
         selected = 0
         while True:
-            nextchar = getchar()
+            self.output.window.timeout(-1)
+            next_char = self._getch(blocking=True)
 
-            # Ansi escape for arrows
-            if ord(nextchar) == 27:
-                getchar()
-                nextchar = ord(getchar())
+            # Escape: could be just Escape, could be Ansi escape for
+            # arrows
+            if next_char == 27:
+
+                # just escape? try non-blocking read to see if
+                # any other characters
+                next_char = self._getch(blocking=False)
+                if next_char == -1:
+                    raise KeyboardInterrupt()
+
+                # other characters available
+                # assuming arrow-key, we discard
+                # the current and read the next
+                next_char = self._getch(blocking=True)
 
                 # Up/down
-                if nextchar == 66:
+                if next_char == 66:
                     itemsShown = min(N, len(curHeaps[-1])) - 1
                     selected = min(itemsShown, selected + 1)
-                elif nextchar == 65:
+                elif next_char == 65:
                     selected = max(0, selected - 1)
 
             else :
                 # Selected
-                if nextchar == '\r':
+                if next_char == 10 or next_char == 13: # enter
                     h = curHeaps[-1]
                     for _ in range(selected):
                         if not h: break
@@ -280,16 +242,16 @@ class Searcher(object):
                 selected = 0
 
                 # Escape code
-                if ord(nextchar) in (3,4, 28, 26):
+                if next_char in (3, 4, 28, 26):
                     raise KeyboardInterrupt()
 
                 # Delete/backspace
-                if ord(nextchar) in (8, 127):
+                if next_char in (8, 127):
                     if cur != "":
                         cur = cur[:-1]
                         curHeaps.pop()
                 else:
-                    cur += nextchar
+                    cur += chr(next_char)
                     curHeaps.append(self._newHeap(cur, curHeaps[-1]))
 
             self._echo(cur, curHeaps[-1], selected, N)
@@ -304,16 +266,15 @@ class Searcher(object):
         self.output.flush()
 
 
-    def run(self, items, rows, input=GetchUnix):
+    def run(self, items, rows):
         self.output.init()
         try:
             heap = [(0, i) for i in items]
             heap.sort()
             self._echo("", heap, 0, N=rows)
-            return self._loop([heap], GetchUnix(), rows)
+            return self._loop([heap], rows)
         finally:
             self.output.cleanup()
-
 
 ##############################################################################
 ## DirectorySource.py
@@ -530,7 +491,11 @@ class Runner(object):
                      f.write(filename)
             else:
                 v = os.environ['EDITOR']
-                os.execvp(v, [v, filename])
+                try:
+                    os.execvp(v, [v, filename])
+                except:
+                    sys.stderr.write("Failed to execute: os.execvp('{}', ['{}', {}])\n".format(v, v, filename))
+                    exit(1)
 
 class DirRun(Runner):
 
