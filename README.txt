@@ -1,7 +1,7 @@
 FuzzySnake
 ==========
 
-A Fuzzy-finder for the terminal. A single-file pure-Python (2.7 and 3.4)
+A fuzzy-finder for the terminal. A single-file pure-Python (2.7 and 3.4)
 file-only version of `quickfind <https://github.com/Refefer/quickfind>`_ .
 List, filter, and open files for editing from your shell like CtrlP for Vim.
 The single-file pure-Python design constraint ensures extreme deployment ease
@@ -11,7 +11,7 @@ system PATH and you are good to go!
 Install
 -------
 
-As _fuzzysnake_ is a single-file program by design, you can simply copy the
+As `fuzzysnake` is a single-file program by design, you can simply copy the
 file "`fs`" to anywhere on your system executable PATH, as, e.g.::
 
     sudo cp bin/fs /usr/local/bin
