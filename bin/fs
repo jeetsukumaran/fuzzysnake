@@ -131,7 +131,7 @@ class CursesPrinter(object):
         self.window.addstr(0, 0, q)
 
     def printItem(self, idx, item, selected, query):
-        flags = curses.A_BOLD if selected else curses.A_NORMAL
+        flags = curses.A_REVERSE if selected else curses.A_NORMAL
         self.window.move(1 + idx, 0)
         for t in self.convert(self.printf(item, query)):
             if not t.text:
