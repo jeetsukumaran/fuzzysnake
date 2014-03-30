@@ -1,5 +1,34 @@
 #!/usr/bin/env python
 
+###############################################################################
+##
+##  Copyright 2014 Jeet Sukumaran.
+##
+##  Licensed under the Apache License, Version 2.0 (the "License");
+##  you may not use this file except in compliance with the License.
+##  You may obtain a copy of the License at
+##
+##      http://www.apache.org/licenses/LICENSE-2.0
+##
+##  Unless required by applicable law or agreed to in writing, software
+##  distributed under the License is distributed on an "AS IS" BASIS,
+##  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+##  See the License for the specific language governing permissions and
+##  limitations under the License.
+##
+##
+## Modified by Jeet Sukumaran from "quickfind"::
+##
+##      quickfind
+##      https://github.com/Refefer/quickfind
+##      By Andrew Stanton.
+##
+################################################################################
+
+"""
+Fuzzy-filter and open files for editing from your shell.
+"""
+
 import os
 import sys
 import termios
@@ -26,6 +55,12 @@ if sys.version_info.major >= 3:
     unicode_str = lambda x: str(x)
 else:
     unicode_str = lambda x: unicode(x)
+
+__prog__ = os.path.basename(__file__)
+__version__ = "1.0.0"
+__description__ = __doc__
+__author__ = 'Jeet Sukumaran'
+__copyright__ = 'Copyright (C) 2014 Jeet Sukumaran.'
 
 ##############################################################################
 ## Util.py
@@ -478,7 +513,8 @@ def getDims():
 class Runner(object):
     def __init__(self, args):
         self.rows, self.columns = getDims()
-        self.args= args
+        self.args = args
+        self.editor_path = os.environ.get("FUZZYSNAKE_EDITOR", os.environ.get("EDITOR", "vi"))
 
     def find(self):
         raise NotImplementedError()
@@ -490,11 +526,10 @@ class Runner(object):
                 with open(self.args.s, 'w') as f:
                      f.write(filename)
             else:
-                v = os.environ['EDITOR']
                 try:
-                    os.execvp(v, [v, filename])
+                    os.execvp(self.editor_path, [self.editor_path, filename])
                 except:
-                    sys.stderr.write("Failed to execute: os.execvp('{}', ['{}', {}])\n".format(v, v, filename))
+                    sys.stderr.write("Failed to execute: os.execvp('{}', ['{}', {}])\n".format(self.editor_path, self.editor_path, filename))
                     exit(1)
 
 class DirRun(Runner):
@@ -525,8 +560,10 @@ class DirRun(Runner):
         return found
 
 def build_arg_parser():
-    parser = argparse.ArgumentParser(description='Quickfind on various archives.')
+    parser = argparse.ArgumentParser(description=__description__)
+    parser.add_argument("--version", action="version", version="FuzzySnake " + __version__)
     parser.add_argument('-s',
+            metavar="FILENAME",
             help='Writes the file to provided file instead of executing it.')
     parser.add_argument('-g',
             action="store_false", help='Do not filter out files in .gitignore')

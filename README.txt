@@ -1,5 +1,5 @@
-fuzzysnake
-=========
+FuzzySnake
+==========
 
 A Fuzzy-finder for the terminal. A single-file pure-Python (2.7 and 3.4)
 file-only version of `quickfind <https://github.com/Refefer/quickfind>`_ .
@@ -38,23 +38,28 @@ After installation, a new executable is added to the path 'fs'.  To use, enter::
 
     fs
 
-and start typing!  _fuzzysnake_ can be configured to match against file name and/or path
-while selecting either files, directories, or both.  By default, it filters out files listed
+and start typing!  `FuzzySnake` can be configured to match against file name and/or path
+while selecting either files, directories, or both. By default, it filters out files listed
 in a tree's .gitignore.
 
-Up and Down arrow keys selects which file to open.  Enter opens the current file with $EDITOR.
-If -s FILENAME is specified, fuzzysnake writes the selected file to disk.
+Once you have selected a file, then:
 
-Tricks
-------
+    - `UP` and `DOWN` arrow keys selects which file to open.
+    - By default, `ENTER` opens the current file for editing with
+      `$FUZZYSNAKE_EDITOR` or, if this is not defined, then `$EDITOR.`
+    - If "`-s FILENAME`" is specified, however, then `ENTER` will result in the
+      selected file being written out to "`FILENAME`".
 
-- Add to your "`.bashrc`"::
+Enhancing Your Shell with FuzzySnake
+------------------------------------
+
+- Add::
 
     bind '"\C-f": "fs\n"'
 
-  to add ctrl+f as a fs hotkey.
+  to your "`.bashrc`" to set `ctrl+f` as a hot-key to invoke FuzzySnake.
 
-- Add to your "`.bashrc`"::
+- Add::
 
     function goto() {
         _OFILE=/tmp/fs.$$
@@ -66,7 +71,8 @@ Tricks
         unset _OFILE
     }
 
-  to enable a new bash command, 'goto', for quickly cd-ing to a directory.
+   to your "`.bashrc`" to enable a new bash command, 'goto', for quickly cd-ing
+   to a directory.
 
 - Have a lot of files with similar names? Add the '-w' flag to allow multiple
   searchers.  '-w' splits queries by white space: a query for "hello world"
@@ -77,8 +83,9 @@ Tricks
 Acknowledgements
 ----------------
 
-`fuzzysnake` is heavily-based on and lightly-modified from `quickfind
-<https://github.com/Refefer/quickfind>`_, by Andrew Stanton.
+`FuzzySnake` is based on:
+
+    `quickfind <https://github.com/Refefer/quickfind>`_, by Andrew Stanton.
 
 Differences from `quickfind`:
 
