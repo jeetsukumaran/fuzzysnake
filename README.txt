@@ -91,6 +91,9 @@ Differences from `quickfind`:
 
     - Pure-Python with no external dependencies (e.g., fsnix [though this will
       be used if available], python-ctags).
+    - Does *actual* fuzzy-matching (i.e., "cat" will match not just "catfish"
+      and "alleycat", but also, e.g, "charset" and "applecart", albeit at lower
+      score.
     - Python 3.x compatible.
     - Single-file implementation.
     - Uses "`curses`" for screen-input: more responsive to, e.g. "`ESC`" or

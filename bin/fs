@@ -459,27 +459,36 @@ class SimpleRanker(Ranker):
         else:
             self.qs = [self.qs]
 
-    def rank_part(self, q, part):
-        if q not in part:
-            return None
+    # def rank_part(self, q, part):
+    #     if q not in part:
+    #         return None
+    #     score = (len(part) - len(q)) ** 0.5
+    #     score -= 1.0 if part.startswith(q) else 0.0
+    #     score -= 1.0 if part.endswith(q) else 0.0
+    #     return score
 
-        score = (len(part) - len(q)) ** 0.5
-        score -= 1.0 if part.startswith(q) else 0.0
-        score -= 1.0 if part.endswith(q) else 0.0
-        return score
+    def score(self, pattern, s):
+        match = re.search(pattern, s)
+        if match is None:
+            return None
+        else:
+            # return 100 / ((1+match.start()) * (match.end()-match.start()+1))
+            return 1000.0 / ((1 + match.start()) * (match.end() - match.start() + 1))
 
     def rank(self, item):
         if self.inc_path:
             part = os.path.join(item.dir.lower(), item.sname)
         else:
             part = item.sname
-
         agg_score = 0.0
         for q in self.qs:
-            score = self.rank_part(q, part)
-            if score is None:
+            # score = self.rank_part(q, part)
+            pattern = '.*?'.join(map(re.escape, list(q)))
+            score = self.score(pattern, part)
+            if score is None or score == 0:
                 return None
-            agg_score += score
+            if score is not None:
+                agg_score += score
 
         return agg_score + self.weight_f(item)
 
