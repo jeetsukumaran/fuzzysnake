@@ -672,6 +672,7 @@ def build_arg_parser():
             dest="action_type",
             const="open",
             help="Passes filepath to 'open' command.")
+    parser.set_defaults(action_type="edit")
 
     return parser.parse_args()
 
