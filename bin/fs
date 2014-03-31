@@ -110,9 +110,13 @@ class CursesPrinter(object):
 
         # color for default text
         curses.init_pair(1, -1, -1)
+        self.default_color = curses.color_pair(1)
 
         # color for matched text
+        # curses.init_pair(2, -1, -1)
+        ## TODO: allow configuration from environmental variable or rc file!
         curses.init_pair(2, curses.COLOR_GREEN, -1)
+        self.match_color = curses.color_pair(2) | curses.A_UNDERLINE
 
     def cleanup(self):
         curses.echo()
@@ -128,8 +132,10 @@ class CursesPrinter(object):
         length = self.window.getmaxyx()[0]
         entry = truncate_middle(os.path.join(item.dir, item.name), length)
         if is_selected:
+            leader = "> "
             weight = curses.A_REVERSE
         else:
+            leader = "  "
             weight = curses.A_NORMAL
         if query:
             # TODO: more efficient to store match object with item
@@ -141,11 +147,12 @@ class CursesPrinter(object):
                 left = entry[:x1]
                 main = entry[x1:x2]
                 right = entry[x2:]
-                self.window.addstr(left, curses.color_pair(1) | weight)
-                self.window.addstr(main, curses.color_pair(2) | weight)
-                self.window.addstr(right, curses.color_pair(1) | weight)
+                self.window.addstr(leader)
+                self.window.addstr(left, self.default_color | weight)
+                self.window.addstr(main, self.match_color | weight)
+                self.window.addstr(right, self.default_color | weight)
                 return
-        self.window.addstr(entry, curses.color_pair(1) | weight)
+        self.window.addstr(leader + entry, self.default_color)
 
     def clear(self):
         self.window.clear()
