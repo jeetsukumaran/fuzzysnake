@@ -677,17 +677,17 @@ def build_arg_parser():
             action="store_const",
             dest="match_type",
             const="fuzzy",
-            help="[DEFAULT] Fuzzy-matching mode: patterns are matched on character-by-character basis in the same order as given, but not necessarily consecutively. You can force selection of this mode during search by typing `<CTRL-R>`.")
+            help="[DEFAULT] Fuzzy-matching mode: patterns are matched on character-by-character basis in the same order as given, but not necessarily consecutively. You can force selection of this mode during the search by typing `<CTRL-R>`.")
     match_type_group.add_argument("-e", "--regexp",
             action="store_const",
             dest="match_type",
             const="regexp",
-            help="Regular-expression mode: patterns are matched as full (Python) regular expression patterns. You can force selection of this mode during search by typing `<CTRL-E>`.")
+            help="Regular-expression mode: patterns are matched as full (Python) regular expression patterns. You can force selection of this mode during the search by typing `<CTRL-E>`.")
     match_type_group.add_argument("-l", "--literal",
             action="store_const",
             dest="match_type",
             const="literal",
-            help="Literal-matching mode: patterns are matched exactly as given. You can force selection of this mode during search by typing `<CTRL-L>`.")
+            help="Literal-matching mode: patterns are matched exactly as given. You can force selection of this mode during the search by typing `<CTRL-L>`.")
     parser.set_defaults(match_type="fuzzy")
 
     target_group_section = parser.add_argument_group("Target Options")
