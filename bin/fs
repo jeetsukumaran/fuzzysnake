@@ -152,10 +152,8 @@ class CursesPrinter(object):
         self.querylen = 0
 
     def init(self):
-        #################
-        # for debugging #
-        # raise Exception()
-        #################
+
+        # setup window
         self.window = curses.initscr()
         curses.start_color()
         curses.use_default_colors()
@@ -653,7 +651,13 @@ class DirRun(Runner):
             paths = ["."]
         items = []
         for path in paths:
-            items.extend( ds.fetch(path) )
+            if path == "-":
+                raise NotImplementedError("Reading from standard input is not supported at this time")
+            else:
+                items.extend( ds.fetch(path) )
+        if not items:
+            sys.stderr.write("No valid files or directories found.\n")
+            sys.exit(0)
         ranker = FuzzyRanker
         s = Searcher(ranker=ranker,
                 output=CursesPrinter(),
@@ -673,11 +677,11 @@ class DirRun(Runner):
 def build_arg_parser():
     parser = argparse.ArgumentParser(description=__description__)
     parser.add_argument("--version", action="version", version="FuzzySnake " + __version__)
-    parser.add_argument("paths",
+    source_options_group = parser.add_argument_group("Source Options")
+    source_options_group.add_argument("paths",
             metavar="DIR",
             nargs="*",
-            help="Top-level path(s) to search. Defaults to current directory.")
-
+            help="Top-level directory path(s) to search. Defaults to current directory ('{}').".format(os.curdir))
     query_options_section = parser.add_argument_group("Query Options")
     query_options_section.add_argument("-m", "--multi-pattern",
             action="store_true", help="Whitespace-separated multiple-queries: whitespaces in the query will be treated as separators for query terms, allowing multiple query terms to be used simultaneosly. If not specified, defaults to entire expression being treated as single pattern. Use `<CTRL-W>` to toggle this option on and off during the search.")
