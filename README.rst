@@ -17,14 +17,39 @@ extension of `quickfind <https://github.com/Refefer/quickfind>`_ (see below).
 Installation
 ------------
 
-As `fuzzysnake` is a single-file program by design, you can simply copy the
-file "`fs`" to anywhere on your system executable PATH, as, e.g.::
+Install the Script Directly
+...........................
+
+As `fuzzysnake` is a single-file program by design, you can simply grab the
+latest version and save it to somewhere on you system `$PATH`::
+
+    $ sudo curl https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/bin/fs > /usr/local/bin/fs && chmod 0755 !#:3
+
+or, if you do not have systems administration rights (but do have a "`~/bin`"
+directory as this is in your `$PATH`)::
+
+    $ curl https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/bin/fs > ~/bin/fs && chmod 0755 !#:3
+
+Otherwise, if you have already downloaded the archive, you can simply copy the
+file "`fs`" to anywhere on your system executable `$PATH`, as, e.g.::
 
     $ sudo cp bin/fs /usr/local/bin
 
-Alternatively, to install from Pypi::
+or, as a personal installation::
+
+    $ cp bin/fs ~/bin/ # assuming '~/bin' exists and is in $PATH
+
+This is the optimum no-muss-no-fuss approach with maximum portability.
+
+Install from the Python Package Index
+.....................................
+
+Alternatively, install from `PyPI <https://pypi.python.org/pypi>`_ by::
 
     $ pip install fuzzysnake
+
+Install from Source
+...................
 
 Or to install from source, clone the
 `repository <https://github.com/jeetsukumaran/fuzzysnake>`_.
@@ -44,24 +69,28 @@ After installation, a new executable is added to the path 'fs'.  To use, enter::
 
     $ fs
 
-and start typing! Filesystem entries will be filtered-out so that only entries
-that fuzzily-match the expression that you type will be listed. If you prefer,
-you can have your expression be interpreted as a regular-expression instead of
-a fuzzy-one by specifying the `-e` flag.
 
-`FuzzySnake` can be configured to match against file name and/or path while
-selecting either files, directories, or both. By default, it filters out files
-listed in a directory tree's `.gitignore`. It can also match on the entire path
-instead of just the tail or basename of the path, using the `-c` flag.
+You can also explicitly pass in directory paths to be searched::
 
-Once you have filtered down the list of candidates, you can use the `UP` or
-`DOWN` arrow keys to select a file path.
+    $ fs ~/projects ~/shared/data
 
-    * By default, `ENTER` opens the selected path for editing using the editor
+After invoking `FuzzySnake`, all files found in the current (or the paths
+otherwise specified in the command invocation) will be displayed in a list.
+You can use the `<UP>` and `<DOWN>` arrow keys (or `<C-N>` and `<C-P>`) to
+select an entry in the list, or you can type in a query to filter the list
+dynamically as you type.  As you start typing characters, the list entries will
+be filtered-out so that only the entries that fuzzily-match the growing
+expression you are typing will be displayed. If you prefer, you can have your
+expression be interpreted as a regular-expression instead of a fuzzy-one by
+specifying the `-e` flag.
+
+Once you have found a file that you want, you hit `<ENTER>`.
+
+    * By default, `<ENTER>` opens the selected path for editing using the editor
       as set the environmental variable `$FUZZYSNAKE_EDITOR` or, if this is not
       defined, then `$EDITOR`.
 
-    * If "`-p`" is specified then hitting `ENTER` will result in the
+    * If "`-p`" is specified then hitting `<ENTER>` will result in the
       selected filepath being written out to the standard output. This allows
       for actions such as::
 
@@ -69,6 +98,26 @@ Once you have filtered down the list of candidates, you can use the `UP` or
           $ cp *.txt $(fs -d -p)
 
     * Other actions are available: see 'fs --help' for details.
+
+`FuzzySnake` can be configured to match against file name and/or path while
+selecting either files, directories, or both. By default, it filters out files
+listed in a directory tree's `.gitignore`. It can also match on the entire path
+instead of just the tail or basename of the path, using the `-c` flag.
+
+Stacking With `find`, `ack`, etc.
+---------------------------------
+If you invoke `FuzzySnake` with '-' as an argument, it will read entries from
+the standard input pipe. This lets you use a external program, such as `find
+<http://linux.about.com/od/commands/l/blcmdl1_find.htm>`_ or `ack
+<http://beyondgrep.com/>`_, to make a first pass at file-discovery, and then
+use `FuzzySnake` to dynamically select the final result with precision::
+
+    $ find ~/projects -type f | fs -
+    $ find ~/projects -name '*.py' | fs -
+    $ ack -f | fs -
+
+Demonstration
+-------------
 
 A demonstration of this program in usage can be found here:
 
@@ -87,6 +136,10 @@ Enhancing Your Shell with FuzzySnake
 
     bind '"\C-f": "fs\n"'
 
+- To have couple the power of `ack` with `FuzzySnake`, add the following to your
+  "`~/.bashrc`::
+
+    alias ackfs='ack -f | fs -'
 
 - To enable a new bash command, "`goto`", for quickly changing to a directory,
   add the following to your "`~/.bashrc`"::
