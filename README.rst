@@ -57,6 +57,11 @@ A demonstration of this program in usage can be found here:
 
     https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
 
+.. image:: https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
+   :height: 600px
+   :alt: Demonstration of FuzzySnake in action.
+   :target: https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
+
 Enhancing Your Shell with FuzzySnake
 ------------------------------------
 
