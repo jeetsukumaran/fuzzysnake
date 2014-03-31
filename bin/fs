@@ -232,11 +232,33 @@ class Searcher(object):
         else:
             # self.output.window.timeout(100)
             self.output.window.nodelay(1)
-        c = self.output.window.getch()
+        ch = self.output.window.getch()
+        ### FOLLOWING HACK NOT NEEDED ANY MORE, DUE TO FOLLOWING APPROACH::
+        ###
+        ###    with os.fdopen(0, 'r') as src:
+        ###       for item in src.read().split("\n"):
+        ###            # do stuff!
+        ###    sys.stdin = open("/dev/tty", "r")
+        ###
+        # if blocking and ch == -1:
+        #     # We are here because files were read from standard input
+        #     # and now input is unavailable. This hack works on POSIX
+        #     # systems ... but ARROW keys lead to exit in the loop
+        #     # because we checking for escape (by itself) in a non-blocking
+        #     # way.
+        #     import tty
+        #     fd = sys.stdin.fileno()
+        #     tty_mode = tty.tcgetattr(fd)
+        #     tty.setcbreak(fd)
+        #     try:
+        #         ch = ord(os.read(fd, 1))
+        #     finally:
+        #         tty.tcsetattr(fd, tty.TCSAFLUSH, tty_mode)
+        #     assert isinstance(ch, int)
         if blocking: # restore
             # self.output.window.timeout(-1)
             self.output.window.nodelay(0)
-        return c
+        return ch
 
     def _newHeap(self, query, curHeap):
         newHeap = []
@@ -652,7 +674,29 @@ class DirRun(Runner):
         items = []
         for path in paths:
             if path == "-":
-                raise NotImplementedError("Reading from standard input is not supported at this time")
+                if sys.platform.startswith('win'):
+                    raise NotImplementedError("Reading from standard input is not supported on this system at this time")
+                # NOTE: To allow us to continue to get input from the tty
+                # standard input in the curses window in the interactive loop,
+                # We do *not* read from `sys.stdin` directly here. Instead we open
+                # a new file object bound to the system file descriptor '0'
+                # (standard input), and read from that. After this is done and
+                # closed (using the context manager), we must set sys.stdin's
+                # file descriptor to the tty opened for reading.
+                with os.fdopen(0, 'r') as src:
+                    for item in src.read().split("\n"):
+                        item = unicode_str(item)
+                        item = os.path.expandvars(os.path.expanduser(item))
+                        dirname = os.path.dirname(item)
+                        basename = os.path.basename(item)
+                        entry = Entry(dirname=dirname,
+                                filename=basename,
+                                score=len(items),
+                                match_start=0,
+                                match_end=0,
+                                match_basename_only=False)
+                        items.append(entry)
+                sys.stdin = open("/dev/tty", "r")
             else:
                 items.extend( ds.fetch(path) )
         if not items:
