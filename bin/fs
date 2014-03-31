@@ -53,7 +53,7 @@ except ImportError:
 if sys.version_info.major >= 3:
     unicode_str = lambda x: str(x)
 else:
-    unicode_str = lambda x: unicode(x)
+    unicode_str = lambda x: unicode(x, errors="ignore")
 
 __prog__ = os.path.basename(__file__)
 __version__ = "1.0.0"
