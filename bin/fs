@@ -26,8 +26,8 @@
 ################################################################################
 
 """
-List, filter, and open files for editing from your shell, using dynamic
-matching of fuzzy or regular-expression of entered patterns.
+Find, list and select a file for editing, dynamically filtering listings
+using fuzzy-matching or regular expression-matching as you type.
 """
 
 import os
@@ -332,7 +332,7 @@ class Searcher(object):
                 # <CTRL-E>: Regular-expression matching mode
                 self.match_type = "regexp"
                 current_heaps = self._reset_search(current_query, current_heaps)
-            elif next_char == 18:
+            elif next_char == 12:
                 # <CTRL-L>: Literal or raw matching mode
                 self.match_type = "literal"
                 current_heaps = self._reset_search(current_query, current_heaps)
@@ -677,6 +677,7 @@ def build_arg_parser():
             metavar="DIR",
             nargs="*",
             help="Top-level path(s) to search. Defaults to current directory.")
+
     query_options_section = parser.add_argument_group("Query Options")
     query_options_section.add_argument("-m", "--multi-pattern",
             action="store_true", help="Whitespace-separated multiple-queries: whitespaces in the query will be treated as separators for query terms, allowing multiple query terms to be used simultaneosly. If not specified, defaults to entire expression being treated as single pattern. Use `<CTRL-W>` to toggle this option on and off during the search.")
@@ -685,7 +686,7 @@ def build_arg_parser():
     query_options_section.add_argument("-g", "--include-gitignore-files",
             action="store_false", help="Do not filter out files in '.gitignore'.")
 
-    match_type_section = parser.add_argument_group("Matching Options")
+    match_type_section = parser.add_argument_group("Matching Mode")
     match_type_group = match_type_section.add_mutually_exclusive_group()
     match_type_group.add_argument("-f", "--fuzzy",
             action="store_const",
@@ -704,7 +705,7 @@ def build_arg_parser():
             help="Literal-matching mode: patterns are matched exactly as given. You can force selection of this mode during the search by typing `<CTRL-L>`.")
     parser.set_defaults(match_type="fuzzy")
 
-    target_group_section = parser.add_argument_group("Target Options")
+    target_group_section = parser.add_argument_group("Target Type")
     target_group = target_group_section.add_mutually_exclusive_group()
     target_group.add_argument("-F", "--files-only", action="store_const", dest="target_type", const="files",
             help="[DEFAULT] Search for files only.")
@@ -714,7 +715,7 @@ def build_arg_parser():
             help="Search for both directories and filess.")
     parser.set_defaults(target_type="files")
 
-    action_group_section = parser.add_argument_group("Action Options")
+    action_group_section = parser.add_argument_group("Action Type")
     action_group = action_group_section.add_mutually_exclusive_group()
     action_group.add_argument("-E", "--edit",
             action="store_const",
