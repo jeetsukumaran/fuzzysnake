@@ -337,7 +337,6 @@ class Searcher(object):
 ##############################################################################
 ## DirectorySource.py
 
-File = collections.namedtuple("File", "dir,name,sname")
 class DirectorySource(object):
 
     def __init__(self, dir=".", ignore_directories=True, ignore_files=True, git_ignore=True):
@@ -381,12 +380,21 @@ class DirectorySource(object):
             if self.filters:
                 fltr = self.filters[-1][1]
 
-            if fltr is None:
-                files = (File(dirname, name, name.lower()) for name in names)
-            else:
-                files = (File(dirname, name, name.lower())
-                        for name in names if fltr(name, dirname))
-            lst.extend(files)
+            for name in names:
+                if fltr is None or fltr(name, dirname):
+                    entry = Entry(dirname=dirname,
+                            filename=name,
+                            score=0,
+                            match_start=0,
+                            match_end=-1,
+                            match_basename_only=False)
+                    lst.append(entry)
+            # if fltr is None:
+            #     files = (File(dirname, name, name.lower()) for name in names)
+            # else:
+            #     files = (File(dirname, name, name.lower())
+            #             for name in names if fltr(name, dirname))
+            # lst.extend(files)
 
             # have to delete the names manually
             if fltr is not None:
@@ -591,17 +599,7 @@ class DirRun(Runner):
             ds = DirectorySource(ignore_files=False, git_ignore=git_ignore)
         else:
             ds = DirectorySource(ignore_directories=False, git_ignore=git_ignore)
-
-        file_items = ds.fetch()
-        items = []
-        for item in file_items:
-            entry = Entry(dirname=item.dir,
-                    filename=item.name,
-                    score=0,
-                    match_start=0,
-                    match_end=-1,
-                    match_basename_only=self.args.basename_only_match)
-            items.append(entry)
+        items = ds.fetch()
 
         ranker = FuzzyRanker
         s = Searcher(ranker=ranker,
