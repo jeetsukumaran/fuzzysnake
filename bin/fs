@@ -130,7 +130,7 @@ class CursesPrinter(object):
     def print_item(self, idx, item, is_selected, query):
         self.window.move(1 + idx, 0)
         # length = self.window.getmaxyx()[0]
-        length = getDims()[1] # more responsive?
+        length = getDims()[1] # more responsive to window resizing?
         entry = truncate_middle(os.path.join(item.dir, item.name), length)
         if is_selected:
             leader = "> "
@@ -258,8 +258,11 @@ class Searcher(object):
                         cur = cur[:-1]
                         curHeaps.pop()
                 else:
-                    cur += chr(next_char)
-                    curHeaps.append(self._newHeap(cur, curHeaps[-1]))
+                    try:
+                        cur += chr(next_char)
+                        curHeaps.append(self._newHeap(cur, curHeaps[-1]))
+                    except ValueError:
+                        pass
 
             self._echo(cur, curHeaps[-1], selected, N)
 
