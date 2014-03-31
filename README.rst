@@ -47,7 +47,8 @@ Once you have selected a file, then:
     * `UP` and `DOWN` arrow keys selects which file to open.
 
     * By default, `ENTER` opens the current file for editing with
-     `$FUZZYSNAKE_EDITOR` or, if this is not defined, then `$EDITOR.`
+      the value of the environmental variable `$FUZZYSNAKE_EDITOR` or,
+      if this is not defined, then `$EDITOR`.
 
     * If "`-s FILENAME`" is specified, however, then `ENTER` will result in the
       selected file being written out to "`FILENAME`".
