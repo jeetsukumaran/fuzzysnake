@@ -95,6 +95,47 @@ def rec_dir_up(dir):
             dir = newdir
 
 ##############################################################################
+## Entry
+
+class Entry(object):
+
+    def __init__(self,
+            dirname,
+            filename,
+            score,
+            match_start,
+            match_end,
+            match_on_path):
+        self.dirname = dirname
+        self.filename = filename
+        self.score = score
+        self.match_on_path = match_on_path
+        self._match_start_offset = match_start
+        self._match_end_offset = match_end
+
+        # TODO: make the follow dynamic attributes
+        self.filepath = os.path.join(self.dirname, self.filename)
+        if self.match_on_path:
+            self._candidate_start = 0
+        else:
+            self._candidate_start = len(os.path.join(self.dirname, ""))
+
+    def _get_match_start(self):
+        return self._candidate_start + self._match_start_offset
+    def _set_match_start(self, v):
+        self._match_start_offset = v
+    match_start = property(_get_match_start, _set_match_start)
+
+    def _get_match_end(self):
+        return self._candidate_start + self._match_end_offset
+    def _set_match_end(self, v):
+        self._match_end_offset = v
+    match_end = property(_get_match_end, _set_match_end)
+
+    def __lt__(self, other):
+        return self.score < other.score
+
+##############################################################################
 ## Searcher.py
 
 class CursesPrinter(object):
@@ -131,29 +172,23 @@ class CursesPrinter(object):
         self.window.move(1 + idx, 0)
         # length = self.window.getmaxyx()[0]
         length = getDims()[1] # more responsive to window resizing?
-        entry = truncate_middle(os.path.join(item.dir, item.name), length)
+        entry = truncate_middle(item.filepath, length)
         if is_selected:
             leader = "> "
             weight = curses.A_REVERSE
         else:
             leader = "  "
             weight = curses.A_NORMAL
-        if query:
-            # TODO: more efficient to store match object with item
-            # instead of rematching!!!
-            m, s = FuzzyRanker.match_and_score(query, entry)
-            if m:
-                x1 = m.start()
-                x2 = m.end()
-                left = entry[:x1]
-                main = entry[x1:x2]
-                right = entry[x2:]
-                self.window.addstr(leader)
-                self.window.addstr(left, self.default_color | weight)
-                self.window.addstr(main, self.match_color | weight)
-                self.window.addstr(right, self.default_color | weight)
-                return
-        self.window.addstr(leader + entry, self.default_color)
+        if item.score > 0:
+            left = entry[:item.match_start]
+            main = entry[item.match_start:item.match_end]
+            right = entry[item.match_end:]
+            self.window.addstr(leader)
+            self.window.addstr(left, self.default_color | weight)
+            self.window.addstr(main, self.match_color | weight)
+            self.window.addstr(right, self.default_color | weight)
+        else:
+            self.window.addstr(leader + entry, self.default_color | weight)
 
     def clear(self):
         self.window.clear()
@@ -190,9 +225,16 @@ class Searcher(object):
                 whitespace_separated_multiquery=self.whitespace_separated_multiquery,
                 match_on_path_query=self.match_on_path_query)
         for w, item in curHeap:
-            score = ranker.rank(item)
-            if score is not None:
+            score, match_start, match_end = ranker.rank(item)
+            if score:
+                item.score = score
+                item.match_start = match_start
+                item.match_end = match_end
                 heapq.heappush(newHeap, (score, item))
+            else:
+                item.score = 0
+                item.match_start = 0
+                item.match_end = 0
         return newHeap
 
     def _topItems(self, heap, N=5):
@@ -243,7 +285,6 @@ class Searcher(object):
                     for _ in range(selected):
                         if not h: break
                         heapq.heappop(h)
-
                     return heapq.heappop(h)[1] if h else None
 
                 selected = 0
@@ -438,7 +479,7 @@ class FuzzyRanker(object):
             match_on_path_query=False):
         self.whitespace_separated_multiquery = whitespace_separated_multiquery
         self.match_on_path_query = match_on_path_query
-        self.weight_f = lambda f: f.dir.count(os.sep) ** 0.5
+        self.weight_f = lambda f: f.dirname.count(os.sep) ** 0.5
         self.qs = query.lower()
         if self.whitespace_separated_multiquery:
             self.qs = self.qs.split()
@@ -447,17 +488,23 @@ class FuzzyRanker(object):
 
     def rank(self, item):
         if self.match_on_path_query:
-            part = os.path.join(item.dir.lower(), item.sname)
+            part = item.filepath
         else:
-            part = item.sname
+            part = item.filename
         agg_score = 0.0
+        match_start = len(part)
+        match_end = -1
         for q in self.qs:
             match, score = self.match_and_score(q, part)
             if score is None or score == 0:
-                return None
+                # return None, None, None
+                return None, None, None
             if score is not None:
+                match_start = min(match_start, match.start())
+                match_end = max(match_end, match.end())
                 agg_score += score
-        return agg_score + self.weight_f(item)
+        # return agg_score + self.weight_f(item), match_start, match_end
+        return agg_score, match_start, match_end
 
 ##############################################################################
 ## Console.py
@@ -511,7 +558,16 @@ class DirRun(Runner):
         else:
             ds = DirectorySource(ignore_directories=False, git_ignore=git_ignore)
 
-        items = ds.fetch()
+        file_items = ds.fetch()
+        items = []
+        for item in file_items:
+            entry = Entry(dirname=item.dir,
+                    filename=item.name,
+                    score=0,
+                    match_start=0,
+                    match_end=-1,
+                    match_on_path=self.args.match_path)
+            items.append(entry)
 
         ranker = FuzzyRanker
         s = Searcher(ranker=ranker,
@@ -525,7 +581,7 @@ class DirRun(Runner):
             sys.exit(0)
 
         if found is not None:
-            found = os.path.join(found.dir, found.name)
+            found = os.path.join(found.dirname, found.filename)
         return found
 
 def build_arg_parser():
