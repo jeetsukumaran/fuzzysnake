@@ -424,12 +424,13 @@ class DirectorySource(object):
         gitignore_filters.reverse()
         return gitignore_filters
 
-    def fetch(self, start_dir="."):
+    def fetch(self, start_dir=".", results=None):
         gitignore_filters = []
         all_filters = []
         if self.ignore_gitignores:
             self.find_parent_gis(start_dir)
-        lst = []
+        if results is None:
+            results = []
         for dirname, dirs, filenames in walk(start_dir):
             names = []
             if not self.ignore_files:
@@ -454,24 +455,17 @@ class DirectorySource(object):
                 if fltr is None or fltr(name, dirname):
                     entry = Entry(dirname=dirname,
                             filename=name,
-                            score=len(lst),
+                            score=len(results),
                             match_start=0,
                             match_end=0,
                             match_basename_only=False)
-                    lst.append(entry)
-            # if fltr is None:
-            #     files = (File(dirname, name, name.lower()) for name in names)
-            # else:
-            #     files = (File(dirname, name, name.lower())
-            #             for name in names if fltr(name, dirname))
-            # lst.extend(files)
-
+                    results.append(entry)
             # have to delete the names manually
             if fltr is not None:
                 for i in range(len(dirs) - 1, -1, -1):
                     if not fltr(dirs[i], dirname):
                         del dirs[i]
-        return lst
+        return results
 
 class GitIgnoreFilter(object):
     # Optimization
@@ -698,7 +692,7 @@ class DirRun(Runner):
                         items.append(entry)
                 sys.stdin = open("/dev/tty", "r")
             else:
-                items.extend( ds.fetch(path) )
+                ds.fetch(path, items)
         if not items:
             sys.stderr.write("No valid files or directories found.\n")
             sys.exit(0)
