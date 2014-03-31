@@ -323,11 +323,10 @@ class Searcher(object):
             self.output.print_item(i, item, i==selected, cur)
         self.output.flush()
 
-
     def run(self, items, rows):
         self.output.init()
         try:
-            heap = [(0, i) for i in items]
+            heap = [(i.score, i) for i in items]
             heap.sort()
             self._echo("", heap, 0, N=rows)
             return self._loop([heap], rows)
@@ -384,9 +383,9 @@ class DirectorySource(object):
                 if fltr is None or fltr(name, dirname):
                     entry = Entry(dirname=dirname,
                             filename=name,
-                            score=0,
+                            score=len(lst),
                             match_start=0,
-                            match_end=-1,
+                            match_end=0,
                             match_basename_only=False)
                     lst.append(entry)
             # if fltr is None:
@@ -401,7 +400,6 @@ class DirectorySource(object):
                 for i in range(len(dirs) - 1, -1, -1):
                     if not fltr(dirs[i], dirname):
                         del dirs[i]
-
         return lst
 
 class GitIgnoreFilter(object):
@@ -600,7 +598,6 @@ class DirRun(Runner):
         else:
             ds = DirectorySource(ignore_directories=False, git_ignore=git_ignore)
         items = ds.fetch()
-
         ranker = FuzzyRanker
         s = Searcher(ranker=ranker,
                 output=CursesPrinter(),
