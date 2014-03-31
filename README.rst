@@ -93,7 +93,7 @@ Acknowledgements
 
     `quickfind <https://github.com/Refefer/quickfind>`_ by Andrew Stanton.
 
-Differences from `quickfind` are:
+Major differences from `quickfind` are:
 
     * Pure-Python with no external dependencies (e.g., fsnix [though this will
       be used if available], python-ctags).
@@ -105,6 +105,9 @@ Differences from `quickfind` are:
     * Python 3.x compatible.
 
     * Single-file implementation.
+
+    * Supports regular-expression searching as an option instead of fuzzy
+      normal-text searching.
 
     * Uses "`curses`" for screen-input: more responsive to, e.g. "`ESC`" or
       "`Ctrl-C`" for cancellation.
