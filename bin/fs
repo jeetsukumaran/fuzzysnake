@@ -267,7 +267,7 @@ class Searcher(object):
     def _loop(self, curHeaps, N):
         heapq.heapify(curHeaps[0])
 
-        cur = ""
+        current_query = ""
         selected = 0
         while True:
             self.output.window.timeout(-1)
@@ -294,8 +294,23 @@ class Searcher(object):
                     selected = min(itemsShown, selected + 1)
                 elif next_char == 65:
                     selected = max(0, selected - 1)
-
-            else :
+            elif next_char == 14:
+                # <CTRL-N>: Next (Down)
+                itemsShown = min(N, len(curHeaps[-1])) - 1
+                selected = min(itemsShown, selected + 1)
+            elif next_char == 16:
+                # <CTRL-P>: Previous (Up)
+                selected = max(0, selected - 1)
+            elif next_char == 2:
+                # <CTRL-B>: Cycle full-path vs. basename matching
+                self.match_basename_only = not self.match_basename_only
+                curHeaps = curHeaps[:1]
+                old_query = current_query
+                current_query = ""
+                for ch in old_query:
+                    current_query += ch
+                    curHeaps.append(self._newHeap(current_query, curHeaps[-1]))
+            else:
                 # Selected
                 if next_char == 10 or next_char == 13: # enter
                     h = curHeaps[-1]
@@ -303,26 +318,22 @@ class Searcher(object):
                         if not h: break
                         heapq.heappop(h)
                     return heapq.heappop(h)[1] if h else None
-
                 selected = 0
-
-                # Escape code
-                if next_char in (3, 4, 28, 26):
+                if next_char in (3, 4, 26, 28):
+                    # <CTRL-C>, <CTRL-D>, <CTRL-Z>, etc.
                     raise KeyboardInterrupt()
-
-                # Delete/backspace
-                if next_char in (8, 127):
-                    if cur != "":
-                        cur = cur[:-1]
+                elif next_char in (8, 127):
+                    # Delete/backspace
+                    if current_query != "":
+                        current_query = current_query[:-1]
                         curHeaps.pop()
                 else:
                     try:
-                        cur += chr(next_char)
-                        curHeaps.append(self._newHeap(cur, curHeaps[-1]))
+                        current_query += chr(next_char)
+                        curHeaps.append(self._newHeap(current_query, curHeaps[-1]))
                     except ValueError:
                         pass
-
-            self._echo(cur, curHeaps[-1], selected, N)
+            self._echo(current_query, curHeaps[-1], selected, N)
 
     def _echo(self, cur, heap, selected, N):
         self.output.clear()
@@ -630,7 +641,7 @@ def build_arg_parser():
     query_type_section.add_argument("-m", "--multi-query",
             action="store_true", help="Multiple query patterns can be entered, with each pattern being separated by whitespace (defaults to entire expression being treated as single pattern).")
     query_type_section.add_argument("-b", "--basename-only-match",
-            action="store_true", help="Restrict match to the basename or tail of the path only (by default, entire path will be matched).")
+            action="store_true", help="Restrict match to the basename or tail of the path only (by default, entire path will be matched). Use '<Ctrl-B>' to toggle this option on and off during the search.")
     query_type_section.add_argument("-g", "--include-gitignore-files",
             action="store_false", help="Do not filter out files in '.gitignore'.")
 
