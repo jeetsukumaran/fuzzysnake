@@ -26,7 +26,8 @@
 ################################################################################
 
 """
-Fuzzy-filter and open files for editing from your shell.
+List, filter, and open files for editing from your shell, using dynamic
+matching of fuzzy or regular-expression of entered patterns.
 """
 
 import os
@@ -204,6 +205,10 @@ class CursesPrinter(object):
         self.window.move(0, self.querylen)
         self.window.refresh()
 
+    def move(self, y, x):
+        self.window.move(y, x)
+        self.window.refresh()
+
 class Searcher(object):
 
     def __init__(self,
@@ -211,12 +216,12 @@ class Searcher(object):
             output,
             whitespace_separated_multiquery=False,
             match_basename_only=False,
-            pattern_type="fuzzy"):
+            match_type="fuzzy"):
         self.ranker = ranker
         self.output = output
         self.whitespace_separated_multiquery = whitespace_separated_multiquery
         self.match_basename_only = match_basename_only
-        self.pattern_type = pattern_type
+        self.match_type = match_type
 
     def _getch(self, blocking=True):
         if blocking:
@@ -236,7 +241,7 @@ class Searcher(object):
         ranker = self.ranker(query=query,
                 whitespace_separated_multiquery=self.whitespace_separated_multiquery,
                 match_basename_only=self.match_basename_only,
-                pattern_type=self.pattern_type)
+                match_type=self.match_type)
         for w, item in curHeap:
             item.match_basename_only = self.match_basename_only # needs to be updated here
             try:
@@ -264,11 +269,21 @@ class Searcher(object):
             items.append(item)
         return items
 
-    def _loop(self, curHeaps, N):
-        heapq.heapify(curHeaps[0])
+    def _reset_search(self, current_query, current_heaps):
+        current_heaps = current_heaps[:1]
+        old_query = current_query
+        current_query = ""
+        for ch in old_query:
+            current_query += ch
+            current_heaps.append(self._newHeap(current_query, current_heaps[-1]))
+        return current_heaps
+
+    def _loop(self, current_heaps, N):
+        heapq.heapify(current_heaps[0])
 
         current_query = ""
         selected = 0
+
         while True:
             self.output.window.timeout(-1)
             next_char = self._getch(blocking=True)
@@ -290,13 +305,13 @@ class Searcher(object):
 
                 # Up/down
                 if next_char == 66:
-                    itemsShown = min(N, len(curHeaps[-1])) - 1
+                    itemsShown = min(N, len(current_heaps[-1])) - 1
                     selected = min(itemsShown, selected + 1)
                 elif next_char == 65:
                     selected = max(0, selected - 1)
             elif next_char == 14:
                 # <CTRL-N>: Next (Down)
-                itemsShown = min(N, len(curHeaps[-1])) - 1
+                itemsShown = min(N, len(current_heaps[-1])) - 1
                 selected = min(itemsShown, selected + 1)
             elif next_char == 16:
                 # <CTRL-P>: Previous (Up)
@@ -304,16 +319,27 @@ class Searcher(object):
             elif next_char == 2:
                 # <CTRL-B>: Cycle full-path vs. basename matching
                 self.match_basename_only = not self.match_basename_only
-                curHeaps = curHeaps[:1]
-                old_query = current_query
-                current_query = ""
-                for ch in old_query:
-                    current_query += ch
-                    curHeaps.append(self._newHeap(current_query, curHeaps[-1]))
+                current_heaps = self._reset_search(current_query, current_heaps)
+            elif next_char == 6:
+                # <CTRL-F>: Fuzzy-matching mode
+                self.match_type = "fuzzy"
+                current_heaps = self._reset_search(current_query, current_heaps)
+            elif next_char == 5:
+                # <CTRL-E>: Regular-expression matching mode
+                self.match_type = "regexp"
+                current_heaps = self._reset_search(current_query, current_heaps)
+            elif next_char == 18:
+                # <CTRL-L>: Literal or raw matching mode
+                self.match_type = "literal"
+                current_heaps = self._reset_search(current_query, current_heaps)
+            elif next_char == 23:
+                # <CTRL-W>: Toggle whitespace-separated multi-search
+                self.whitespace_separated_multiquery = not self.whitespace_separated_multiquery
+                current_heaps = self._reset_search(current_query, current_heaps)
             else:
                 # Selected
                 if next_char == 10 or next_char == 13: # enter
-                    h = curHeaps[-1]
+                    h = current_heaps[-1]
                     for _ in range(selected):
                         if not h: break
                         heapq.heappop(h)
@@ -326,20 +352,20 @@ class Searcher(object):
                     # Delete/backspace
                     if current_query != "":
                         current_query = current_query[:-1]
-                        curHeaps.pop()
+                        current_heaps.pop()
                 else:
                     try:
                         current_query += chr(next_char)
-                        curHeaps.append(self._newHeap(current_query, curHeaps[-1]))
+                        current_heaps.append(self._newHeap(current_query, current_heaps[-1]))
                     except ValueError:
                         pass
-            self._echo(current_query, curHeaps[-1], selected, N)
+            self._echo(current_query, current_heaps[-1], selected, N)
 
-    def _echo(self, cur, heap, selected, N):
+    def _echo(self, current_query, heap, selected, N):
         self.output.clear()
-        self.output.print_query(cur)
+        self.output.print_query(current_query)
         for i, item in enumerate(self._topItems(heap, N)):
-            self.output.print_item(i, item, i==selected, cur)
+            self.output.print_item(i, item, i==selected, current_query)
         self.output.flush()
 
     def run(self, items, rows):
@@ -499,19 +525,19 @@ class FuzzyRanker(object):
     class IncompleteRegularExpressionPatternException(Exception):
         pass
 
-    def match_and_score(query, s, pattern_type):
-        if pattern_type == "fuzzy":
+    def match_and_score(query, s, match_type):
+        if match_type == "fuzzy":
             pattern = '.*?'.join(map(re.escape, list(query)))
-        elif pattern_type == "strict":
+        elif match_type == "literal":
             pattern = ''.join(map(re.escape, list(query)))
-        elif pattern_type == "regexp":
+        elif match_type == "regexp":
             pattern = query
         else:
-            raise TypeError("Unrecognized pattern type: '{}'".format(pattern_type))
+            raise TypeError("Unrecognized pattern type: '{}'".format(match_type))
         try:
             match = re.search(pattern, s, re.I)
         except re.error:
-            if pattern_type == "regexp":
+            if match_type == "regexp":
                 raise FuzzyRanker.IncompleteRegularExpressionPatternException()
         if match is None:
             result = 0
@@ -525,7 +551,7 @@ class FuzzyRanker(object):
             query,
             whitespace_separated_multiquery=False,
             match_basename_only=False,
-            pattern_type="fuzzy"):
+            match_type="fuzzy"):
         self.whitespace_separated_multiquery = whitespace_separated_multiquery
         self.match_basename_only =match_basename_only
         self.weight_f = lambda f: f.dirname.count(os.sep) ** 0.5
@@ -534,7 +560,7 @@ class FuzzyRanker(object):
             self.qs = self.qs.split()
         else:
             self.qs = [self.qs]
-        self.pattern_type = pattern_type
+        self.match_type = match_type
 
     def rank(self, item):
         if self.match_basename_only:
@@ -545,7 +571,7 @@ class FuzzyRanker(object):
         match_start = len(part)
         match_end = -1
         for q in self.qs:
-            match, score = self.match_and_score(q, part, self.pattern_type)
+            match, score = self.match_and_score(q, part, self.match_type)
             if score is None or score == 0:
                 # return None, None, None
                 return None, None, None
@@ -620,9 +646,9 @@ class DirRun(Runner):
         ranker = FuzzyRanker
         s = Searcher(ranker=ranker,
                 output=CursesPrinter(),
-                whitespace_separated_multiquery=self.args.multi_query,
+                whitespace_separated_multiquery=self.args.multi_pattern,
                 match_basename_only=self.args.basename_only_match,
-                pattern_type=self.args.pattern_type,
+                match_type=self.args.match_type,
                 )
         try:
             found = s.run(items, self.rows - 3)
@@ -637,34 +663,34 @@ def build_arg_parser():
     parser = argparse.ArgumentParser(description=__description__)
     parser.add_argument("--version", action="version", version="FuzzySnake " + __version__)
 
-    query_type_section = parser.add_argument_group("Query Type")
-    query_type_section.add_argument("-m", "--multi-query",
-            action="store_true", help="Multiple query patterns can be entered, with each pattern being separated by whitespace (defaults to entire expression being treated as single pattern).")
-    query_type_section.add_argument("-b", "--basename-only-match",
-            action="store_true", help="Restrict match to the basename or tail of the path only (by default, entire path will be matched). Use '<Ctrl-B>' to toggle this option on and off during the search.")
-    query_type_section.add_argument("-g", "--include-gitignore-files",
+    query_options_section = parser.add_argument_group("Query Options")
+    query_options_section.add_argument("-m", "--multi-pattern",
+            action="store_true", help="Whitespace-separated multiple-queries: whitespaces in the query will be treated as separators for query terms, allowing multiple query terms to be used simultaneosly. If not specified, defaults to entire expression being treated as single pattern. Use `<CTRL-W>` to toggle this option on and off during the search.")
+    query_options_section.add_argument("-b", "--basename-only-match",
+            action="store_true", help="Restrict match to the basename or tail of the path only (by default, entire path will be matched). Use `<CTRL-B>` to toggle this option on and off during the search.")
+    query_options_section.add_argument("-g", "--include-gitignore-files",
             action="store_false", help="Do not filter out files in '.gitignore'.")
 
-    pattern_type_section = parser.add_argument_group("Pattern Type")
-    pattern_type_group = pattern_type_section.add_mutually_exclusive_group()
-    pattern_type_group.add_argument("-f", "--fuzzy",
+    match_type_section = parser.add_argument_group("Matching Options")
+    match_type_group = match_type_section.add_mutually_exclusive_group()
+    match_type_group.add_argument("-f", "--fuzzy",
             action="store_const",
-            dest="pattern_type",
+            dest="match_type",
             const="fuzzy",
-            help="[DEFAULT] Treat patterns as normal text (i.e., not a regular expression), with fuzzy matching.")
-    pattern_type_group.add_argument("-s", "--strict",
+            help="[DEFAULT] Fuzzy-matching mode: patterns are matched on character-by-character basis in the same order as given, but not necessarily consecutively. You can force selection of this mode during search by typing `<CTRL-R>`.")
+    match_type_group.add_argument("-e", "--regexp",
             action="store_const",
-            dest="pattern_type",
-            const="strict",
-            help="Treat patterns as normal text (i.e., not a regular expression), with strict matching")
-    pattern_type_group.add_argument("-e", "--regexp",
-            action="store_const",
-            dest="pattern_type",
+            dest="match_type",
             const="regexp",
-            help="Treat patterns entered as (Python-dialect) regular expressions.")
-    parser.set_defaults(pattern_type="fuzzy")
+            help="Regular-expression mode: patterns are matched as full (Python) regular expression patterns. You can force selection of this mode during search by typing `<CTRL-E>`.")
+    match_type_group.add_argument("-l", "--literal",
+            action="store_const",
+            dest="match_type",
+            const="literal",
+            help="Literal-matching mode: patterns are matched exactly as given. You can force selection of this mode during search by typing `<CTRL-L>`.")
+    parser.set_defaults(match_type="fuzzy")
 
-    target_group_section = parser.add_argument_group("Search Target Type")
+    target_group_section = parser.add_argument_group("Target Options")
     target_group = target_group_section.add_mutually_exclusive_group()
     target_group.add_argument("-F", "--files-only", action="store_const", dest="target_type", const="files",
             help="[DEFAULT] Search for files only.")
@@ -674,7 +700,7 @@ def build_arg_parser():
             help="Search for both directories and filess.")
     parser.set_defaults(target_type="files")
 
-    action_group_section = parser.add_argument_group("Action Type")
+    action_group_section = parser.add_argument_group("Action Options")
     action_group = action_group_section.add_mutually_exclusive_group()
     action_group.add_argument("-E", "--edit",
             action="store_const",
