@@ -3,10 +3,13 @@ FuzzySnake
 
 A fuzzy-finder for the terminal. A single-file pure-Python (2.7 and 3.4)
 file-only version of `quickfind <https://github.com/Refefer/quickfind>`_ .
-List, filter, and open files for editing from your shell like CtrlP for Vim.
-The single-file pure-Python design constraint ensures extreme deployment ease
-and portability: simply copy the application ("`bin/fs`") to anywhere on your
-system PATH and you are good to go!
+List, filter, and open files for editing from your shell, using dynamic
+fuzzy-matching like CtrlP for Vim. A "fuzzy" match is one in which all the
+characters of the expression are found in the string in the same order as they
+occur in the expression, but not necessarily consecutively.  The single-file
+pure-Python design constraint ensures extreme deployment ease and portability:
+simply copy the application ("`bin/fs`") to anywhere on your system PATH and
+you are good to go!
 
 Installation
 ------------
@@ -38,20 +41,31 @@ After installation, a new executable is added to the path 'fs'.  To use, enter::
 
     $ fs
 
-and start typing!  `FuzzySnake` can be configured to match against file name and/or path
-while selecting either files, directories, or both. By default, it filters out files listed
-in a tree's .gitignore.
+and start typing! Filesystem entries will be filtered-out so that only entries
+that fuzzily-match the expression that you type will be listed. If you prefer,
+you can have your expression be interpreted as a regular-expression instead of
+a fuzzy-one by specifying the `-e` flag.
 
-Once you have selected a file, then:
+`FuzzySnake` can be configured to match against file name and/or path while
+selecting either files, directories, or both. By default, it filters out files
+listed in a directory tree's `.gitignore`. It can also match on the entire path
+instead of just the tail or basename of the path, using the `-c` flag.
 
-    * `UP` and `DOWN` arrow keys selects which file to open.
+Once you have filtered down the list of candidates, you can use the `UP` or
+`DOWN` arrow keys to select a file path.
 
-    * By default, `ENTER` opens the current file for editing with
-      the value of the environmental variable `$FUZZYSNAKE_EDITOR` or,
-      if this is not defined, then `$EDITOR`.
+    * By default, `ENTER` opens the selected path for editing using the editor
+      as set the environmental variable `$FUZZYSNAKE_EDITOR` or, if this is not
+      defined, then `$EDITOR`.
 
-    * If "`-s FILENAME`" is specified, however, then `ENTER` will result in the
-      selected file being written out to "`FILENAME`".
+    * If "`-p`" is specified then hitting `ENTER` will result in the
+      selected filepath being written out to the standard output. This allows
+      for actions such as::
+
+          $ mv $(fs -p) ~/data
+          $ cp *.txt $(fs -d -p)
+
+    * Other actions are available: see 'fs --help' for details.
 
 A demonstration of this program in usage can be found here:
 
