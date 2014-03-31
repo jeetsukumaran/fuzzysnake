@@ -1,15 +1,18 @@
 FuzzySnake
 ==========
 
-A fuzzy-finder for the terminal. A single-file pure-Python (2.7 and 3.4)
-file-only version of `quickfind <https://github.com/Refefer/quickfind>`_ .
 List, filter, and open files for editing from your shell, using dynamic
-fuzzy-matching like CtrlP for Vim. A "fuzzy" match is one in which all the
-characters of the expression are found in the string in the same order as they
-occur in the expression, but not necessarily consecutively.  The single-file
-pure-Python design constraint ensures extreme deployment ease and portability:
-simply copy the application ("`bin/fs`") to anywhere on your system PATH and
-you are good to go!
+fuzzy-matching of patterns as you type them in. A "fuzzy" match is one in which
+all the characters of the expression are found in the string in the same order
+as they occur in the expression, but not necessarily consecutively. If you want
+more control over the matching, you can use full-fledged regular expressions
+instead of fuzzy-matching. The single-file pure-Python design constraint
+ensures extreme deployment ease and portability: either use 'pip' to install
+this program or simply copy the application ("`bin/fs`") to anywhere on your
+system PATH and you are good to go!
+
+This is single-file pure-Python (2.7 and 3.4) file-only modification and
+extension of `quickfind <https://github.com/Refefer/quickfind>`_ (see below).
 
 Installation
 ------------
@@ -117,16 +120,15 @@ Major differences from `quickfind` are:
     * Pure-Python with no external dependencies (e.g., fsnix [though this will
       be used if available], python-ctags).
 
-    * Does *actual* fuzzy-matching (i.e., "cat" will match not just "catfish"
+    * Full fuzzy-matching (i.e., "cat" will match not just "catfish"
       and "alleycat", but also, e.g, "charset" and "applecart", albeit at lower
       score).
+
+    * Full regular expression matching also supported.
 
     * Python 3.x compatible.
 
     * Single-file implementation.
-
-    * Supports regular-expression searching as an option instead of fuzzy
-      normal-text searching.
 
     * Uses "`curses`" for screen-input: more responsive to, e.g. "`ESC`" or
       "`Ctrl-C`" for cancellation.
