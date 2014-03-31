@@ -35,7 +35,6 @@ import termios
 import heapq
 import argparse
 import curses
-import functools
 import fcntl
 import struct
 import fnmatch
@@ -95,24 +94,12 @@ def rec_dir_up(dir):
             if newdir == dir: break
             dir = newdir
 
-def highlight(v, query, color="green"):
-    i = v.lower().rfind(query.lower())
-    if query and i > -1:
-        left = v[:i]
-        lq = len(query)
-        highlight = v[i:i+lq]
-        right = v[i+lq:]
-        return [ left, CString(highlight, color), right ]
-
-    return [v]
-
 ##############################################################################
 ## Searcher.py
 
 class CursesPrinter(object):
 
-    def __init__(self, printf):
-        self.printf = printf
+    def __init__(self):
         self.querylen = 0
 
     def init(self):
@@ -121,36 +108,44 @@ class CursesPrinter(object):
         curses.use_default_colors()
         curses.noecho()
 
+        # color for default text
+        curses.init_pair(1, -1, -1)
+
+        # color for matched text
+        curses.init_pair(2, curses.COLOR_GREEN, -1)
+
     def cleanup(self):
         curses.echo()
         curses.endwin()
 
-    def printQuery(self, query):
+    def print_query(self, query):
         q = "$ " + query
         self.querylen = len(q)
         self.window.addstr(0, 0, q)
 
-    def printItem(self, idx, item, selected, query):
-        flags = curses.A_REVERSE if selected else curses.A_NORMAL
+    def print_item(self, idx, item, is_selected, query):
         self.window.move(1 + idx, 0)
-        for t in self.convert(self.printf(item, query)):
-            if not t.text:
-                continue
-            if t.fcolor == t.bcolor == -1:
-                self.window.addstr(t.text, t.weight | flags)
-            else:
-                curses.init_pair(1, t.fcolor, t.bcolor)
-                self.window.addstr(t.text, curses.color_pair(1) | t.weight | flags)
-
-    def convert(self, text):
-        if not isinstance(text, list):
-            text = [text]
-
-        r = []
-        for t in text:
-            r.append(t if isinstance(t, CString) else CString(t))
-
-        return r
+        length = self.window.getmaxyx()[0]
+        entry = truncate_middle(os.path.join(item.dir, item.name), length)
+        if is_selected:
+            weight = curses.A_REVERSE
+        else:
+            weight = curses.A_NORMAL
+        if query:
+            # TODO: more efficient to store match object with item
+            # instead of rematching!!!
+            m, s = FuzzyRanker.match_and_score(query, entry)
+            if m:
+                x1 = m.start()
+                x2 = m.end()
+                left = entry[:x1]
+                main = entry[x1:x2]
+                right = entry[x2:]
+                self.window.addstr(left, curses.color_pair(1) | weight)
+                self.window.addstr(main, curses.color_pair(2) | weight)
+                self.window.addstr(right, curses.color_pair(1) | weight)
+                return
+        self.window.addstr(entry, curses.color_pair(1) | weight)
 
     def clear(self):
         self.window.clear()
@@ -158,38 +153,6 @@ class CursesPrinter(object):
     def flush(self):
         self.window.move(0, self.querylen)
         self.window.refresh()
-
-class CString(object):
-    __slots__ = ('text', 'fcolor', 'bcolor', "weight")
-
-    colors = {
-        "default": -1,
-        "black": curses.COLOR_BLACK,
-        "cyan": curses.COLOR_CYAN,
-        "magenta": curses.COLOR_MAGENTA,
-        "white": curses.COLOR_WHITE,
-        "blue": curses.COLOR_BLUE,
-        "green": curses.COLOR_GREEN,
-        "red": curses.COLOR_RED,
-        "yellow": curses.COLOR_YELLOW
-    }
-
-    weights = {
-        "alt": curses.A_ALTCHARSET,
-        "blink": curses.A_BLINK,
-        "bold": curses.A_BOLD,
-        "dim": curses.A_DIM,
-        "normal": curses.A_NORMAL,
-        "reverse": curses.A_REVERSE,
-        "standout": curses.A_STANDOUT,
-        "underlined": curses.A_UNDERLINE
-    }
-
-    def __init__(self, text, fcolor="default", bcolor="default", weight="normal"):
-        self.text = unicode_str(text)
-        self.fcolor = self.colors.get(fcolor, -1)
-        self.bcolor = self.colors.get(bcolor, -1)
-        self.weight = self.weights[weight]
 
 class Searcher(object):
 
@@ -294,11 +257,9 @@ class Searcher(object):
 
     def _echo(self, cur, heap, selected, N):
         self.output.clear()
-        self.output.printQuery(cur)
-
+        self.output.print_query(cur)
         for i, item in enumerate(self._topItems(heap, N)):
-            self.output.printItem(i, item, i==selected, cur)
-
+            self.output.print_item(i, item, i==selected, cur)
         self.output.flush()
 
 
@@ -449,6 +410,17 @@ class GitIgnoreFilter(object):
 
 class FuzzyRanker(object):
 
+    def match_and_score(query, s):
+        pattern = '.*?'.join(map(re.escape, list(query)))
+        match = re.search(pattern, s, re.I)
+        if match is None:
+            result = 0
+        else:
+            # return 100 / ((1+match.start()) * (match.end()-match.start()+1))
+            result = 1000.0 / ((1 + match.start()) * (match.end() - match.start() + 1))
+        return match, result
+    match_and_score = staticmethod(match_and_score)
+
     def __init__(self,
             query,
             whitespace_separated_multiquery=False,
@@ -462,22 +434,6 @@ class FuzzyRanker(object):
         else:
             self.qs = [self.qs]
 
-    # def rank_part(self, q, part):
-    #     if q not in part:
-    #         return None
-    #     score = (len(part) - len(q)) ** 0.5
-    #     score -= 1.0 if part.startswith(q) else 0.0
-    #     score -= 1.0 if part.endswith(q) else 0.0
-    #     return score
-
-    def score(self, pattern, s):
-        match = re.search(pattern, s)
-        if match is None:
-            return None
-        else:
-            # return 100 / ((1+match.start()) * (match.end()-match.start()+1))
-            return 1000.0 / ((1 + match.start()) * (match.end() - match.start() + 1))
-
     def rank(self, item):
         if self.match_on_path_query:
             part = os.path.join(item.dir.lower(), item.sname)
@@ -485,20 +441,12 @@ class FuzzyRanker(object):
             part = item.sname
         agg_score = 0.0
         for q in self.qs:
-            # score = self.rank_part(q, part)
-            pattern = '.*?'.join(map(re.escape, list(q)))
-            score = self.score(pattern, part)
+            match, score = self.match_and_score(q, part)
             if score is None or score == 0:
                 return None
             if score is not None:
                 agg_score += score
-
         return agg_score + self.weight_f(item)
-
-def FilePrinter(f, query, length):
-    v = truncate_middle(os.path.join(f.dir, f.name), length)
-    return highlight(v, query)
-
 
 ##############################################################################
 ## Console.py
@@ -554,10 +502,9 @@ class DirRun(Runner):
 
         items = ds.fetch()
 
-        f = functools.partial(FilePrinter, length=self.columns)
         ranker = FuzzyRanker
         s = Searcher(ranker=ranker,
-                output=CursesPrinter(f),
+                output=CursesPrinter(),
                 whitespace_separated_multiquery=self.args.whitespace_separated_multiquery,
                 match_on_path_query=self.args.match_path,
                 )
