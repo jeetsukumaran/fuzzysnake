@@ -21,14 +21,14 @@ Install the Script Directly
 ...........................
 
 As `fuzzysnake` is a single-file program by design, you can simply grab the
-latest version and save it to somewhere on you system `$PATH`::
+latest version from its home and save it to somewhere on your system `$PATH`::
 
-    $ sudo curl https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/bin/fs > /usr/local/bin/fs && chmod 0755 !#:3
+    $ sudo curl -ssl3 https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/bin/fs > /usr/local/bin/fs && chmod 0755 !#:3
 
 or, if you do not have systems administration rights (but do have a "`~/bin`"
 directory as this is in your `$PATH`)::
 
-    $ curl https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/bin/fs > ~/bin/fs && chmod 0755 !#:3
+    $ curl -ssl3 https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/bin/fs > ~/bin/fs && chmod 0755 !#:3
 
 Otherwise, if you have already downloaded the archive, you can simply copy the
 file "`fs`" to anywhere on your system executable `$PATH`, as, e.g.::
