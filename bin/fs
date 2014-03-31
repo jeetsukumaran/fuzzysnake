@@ -152,6 +152,10 @@ class CursesPrinter(object):
         self.querylen = 0
 
     def init(self):
+        #################
+        # for debugging #
+        # raise Exception()
+        #################
         self.window = curses.initscr()
         curses.start_color()
         curses.use_default_colors()
@@ -383,46 +387,48 @@ class Searcher(object):
 
 class DirectorySource(object):
 
-    def __init__(self, dir=".", ignore_directories=True, ignore_files=True, git_ignore=True):
+    def __init__(self, ignore_directories=True, ignore_files=True, ignore_gitignores=True):
         self.ignore_directories = ignore_directories
         self.ignore_files = ignore_files
-        self.git_ignore = git_ignore
-        self.startDir = dir
-        self.filters = []
-        if git_ignore:
-            self.find_parent_gis()
+        self.ignore_gitignores = ignore_gitignores
 
-    def find_parent_gis(self):
-        dirs = rec_dir_up(self.startDir)
+    def find_parent_gis(self, start_dir):
+        gitignore_filters = []
+        dirs = rec_dir_up(start_dir)
         next(dirs)
         # dirs.next()
         for dirname in dirs:
             pgi = os.path.join(dirname, '.gitignore')
             if os.path.isfile(pgi):
-                self.filters.append(GitIgnoreFilter(dirname, '.gitignore'))
-        self.filters.reverse()
+                gitignore_filters.append(GitIgnoreFilter(dirname, '.gitignore'))
+        gitignore_filters.reverse()
+        return gitignore_filters
 
-    def fetch(self):
+    def fetch(self, start_dir="."):
+        gitignore_filters = []
+        all_filters = []
+        if self.ignore_gitignores:
+            self.find_parent_gis(start_dir)
         lst = []
-        for dirname, dirs, filenames in walk(self.startDir):
+        for dirname, dirs, filenames in walk(start_dir):
             names = []
             if not self.ignore_files:
                 names = filenames
             if not self.ignore_directories:
                 names.extend(dirs)
-
-            if self.git_ignore and '.gitignore' in filenames:
+            if self.ignore_gitignores and '.gitignore' in filenames:
                 gif = GitIgnoreFilter(dirname, '.gitignore')
-                self.filters.append((dirname, gif))
-
-            while self.filters:
-                path, _ = self.filters[-1]
-                if dirname.startswith(path): break
-                self.filters.pop()
+                gitignore_filters.append((dirname, gif))
+            all_filters.extend(gitignore_filters)
+            while all_filters:
+                path, filter_obj = all_filters[-1]
+                if dirname.startswith(path):
+                    break
+                all_filters.pop()
 
             fltr = None
-            if self.filters:
-                fltr = self.filters[-1][1]
+            if all_filters:
+                fltr = all_filters[-1][1]
 
             for name in names:
                 if fltr is None or fltr(name, dirname):
@@ -464,7 +470,6 @@ class GitIgnoreFilter(object):
             for fn in f:
                 if fn.startswith('#'):
                     continue
-
                 fn = fn.strip()
                 if fn.startswith('/'):
                     path_filters.append(fn)
@@ -509,6 +514,8 @@ class GitIgnoreFilter(object):
             return False
         # Check global globs
         for f in self.glob_filters:
+            if f.match(os.path.join(dirname, fn)) is not None:
+                return False
             if f.match(fn) is not None:
                 return False
 
@@ -633,16 +640,20 @@ class Runner(object):
 class DirRun(Runner):
 
     def find(self):
-
-        git_ignore = self.args.include_gitignore_files
+        ignore_gitignores = self.args.include_gitignore_files
         if self.args.target_type == 'all':
             ds = DirectorySource(ignore_directories=False,
-                    ignore_files=False, git_ignore=git_ignore)
+                    ignore_files=False, ignore_gitignores=ignore_gitignores)
         elif self.args.target_type == 'files':
-            ds = DirectorySource(ignore_files=False, git_ignore=git_ignore)
+            ds = DirectorySource(ignore_files=False, ignore_gitignores=ignore_gitignores)
         else:
-            ds = DirectorySource(ignore_directories=False, git_ignore=git_ignore)
-        items = ds.fetch()
+            ds = DirectorySource(ignore_directories=False, ignore_gitignores=ignore_gitignores)
+        paths = self.args.paths
+        if not paths:
+            paths = ["."]
+        items = []
+        for path in paths:
+            items.extend( ds.fetch(path) )
         ranker = FuzzyRanker
         s = Searcher(ranker=ranker,
                 output=CursesPrinter(),
@@ -662,7 +673,10 @@ class DirRun(Runner):
 def build_arg_parser():
     parser = argparse.ArgumentParser(description=__description__)
     parser.add_argument("--version", action="version", version="FuzzySnake " + __version__)
-
+    parser.add_argument("paths",
+            metavar="DIR",
+            nargs="*",
+            help="Top-level path(s) to search. Defaults to current directory.")
     query_options_section = parser.add_argument_group("Query Options")
     query_options_section.add_argument("-m", "--multi-pattern",
             action="store_true", help="Whitespace-separated multiple-queries: whitespaces in the query will be treated as separators for query terms, allowing multiple query terms to be used simultaneosly. If not specified, defaults to entire expression being treated as single pattern. Use `<CTRL-W>` to toggle this option on and off during the search.")
