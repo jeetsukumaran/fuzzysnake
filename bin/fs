@@ -113,21 +113,28 @@ class Entry(object):
         self._match_start_offset = match_start
         self._match_end_offset = match_end
 
-        # TODO: make the follow dynamic attributes
-        self.filepath = os.path.join(self.dirname, self.filename)
-        if self.match_basename_only:
-            self._candidate_start = len(os.path.join(self.dirname, ""))
-        else:
-            self._candidate_start = 0
+    def _get_filepath(self):
+        return os.path.join(self.dirname, self.filename)
+    filepath = property(_get_filepath)
+
+    def _start_of_basename_in_filepath(self):
+        return len(os.path.join(self.dirname, ""))
+    start_of_basename_in_filepath = property(_start_of_basename_in_filepath)
 
     def _get_match_start(self):
-        return self._candidate_start + self._match_start_offset
+        if self.match_basename_only:
+            return self.start_of_basename_in_filepath + self._match_start_offset
+        else:
+            return self._match_start_offset
     def _set_match_start(self, v):
         self._match_start_offset = v
     match_start = property(_get_match_start, _set_match_start)
 
     def _get_match_end(self):
-        return self._candidate_start + self._match_end_offset
+        if self.match_basename_only:
+            return self.start_of_basename_in_filepath + self._match_end_offset
+        else:
+            return self._match_end_offset
     def _set_match_end(self, v):
         self._match_end_offset = v
     match_end = property(_get_match_end, _set_match_end)
@@ -231,6 +238,7 @@ class Searcher(object):
                 match_basename_only=self.match_basename_only,
                 pattern_type=self.pattern_type)
         for w, item in curHeap:
+            item.match_basename_only = self.match_basename_only # needs to be updated here
             try:
                 score, match_start, match_end = ranker.rank(item)
             except FuzzyRanker.IncompleteRegularExpressionPatternException:
