@@ -203,11 +203,13 @@ class Searcher(object):
             ranker,
             output,
             whitespace_separated_multiquery=False,
-            match_on_path_query=False):
+            match_on_path_query=False,
+            pattern_type="fuzzy"):
         self.ranker = ranker
         self.output = output
         self.whitespace_separated_multiquery = whitespace_separated_multiquery
         self.match_on_path_query = match_on_path_query
+        self.pattern_type = pattern_type
 
     def _getch(self, blocking=True):
         if blocking:
@@ -223,9 +225,13 @@ class Searcher(object):
         newHeap = []
         ranker = self.ranker(query=query,
                 whitespace_separated_multiquery=self.whitespace_separated_multiquery,
-                match_on_path_query=self.match_on_path_query)
+                match_on_path_query=self.match_on_path_query,
+                pattern_type=self.pattern_type)
         for w, item in curHeap:
-            score, match_start, match_end = ranker.rank(item)
+            try:
+                score, match_start, match_end = ranker.rank(item)
+            except FuzzyRanker.IncompleteRegularExpressionPatternException:
+                return curHeap
             if score:
                 item.score = score
                 item.match_start = match_start
@@ -462,9 +468,23 @@ class GitIgnoreFilter(object):
 
 class FuzzyRanker(object):
 
-    def match_and_score(query, s):
-        pattern = '.*?'.join(map(re.escape, list(query)))
-        match = re.search(pattern, s, re.I)
+    class IncompleteRegularExpressionPatternException(Exception):
+        pass
+
+    def match_and_score(query, s, pattern_type):
+        if pattern_type == "fuzzy":
+            pattern = '.*?'.join(map(re.escape, list(query)))
+        elif pattern_type == "strict":
+            pattern = ''.join(map(re.escape, list(query)))
+        elif pattern_type == "regexp":
+            pattern = query
+        else:
+            raise TypeError("Unrecognized pattern type: '{}'".format(pattern_type))
+        try:
+            match = re.search(pattern, s, re.I)
+        except re.error:
+            if pattern_type == "regexp":
+                raise FuzzyRanker.IncompleteRegularExpressionPatternException()
         if match is None:
             result = 0
         else:
@@ -476,7 +496,8 @@ class FuzzyRanker(object):
     def __init__(self,
             query,
             whitespace_separated_multiquery=False,
-            match_on_path_query=False):
+            match_on_path_query=False,
+            pattern_type="fuzzy"):
         self.whitespace_separated_multiquery = whitespace_separated_multiquery
         self.match_on_path_query = match_on_path_query
         self.weight_f = lambda f: f.dirname.count(os.sep) ** 0.5
@@ -485,6 +506,7 @@ class FuzzyRanker(object):
             self.qs = self.qs.split()
         else:
             self.qs = [self.qs]
+        self.pattern_type = pattern_type
 
     def rank(self, item):
         if self.match_on_path_query:
@@ -495,7 +517,7 @@ class FuzzyRanker(object):
         match_start = len(part)
         match_end = -1
         for q in self.qs:
-            match, score = self.match_and_score(q, part)
+            match, score = self.match_and_score(q, part, self.pattern_type)
             if score is None or score == 0:
                 # return None, None, None
                 return None, None, None
@@ -535,8 +557,8 @@ class Runner(object):
     def run(self):
         filename = self.find()
         if filename is not None:
-            if self.args.save_to_file is not None:
-                with open(self.args.save_to_file, 'w') as f:
+            if self.args.write_to_file is not None:
+                with open(self.args.write_to_file, 'w') as f:
                      f.write(filename)
             else:
                 try:
@@ -572,8 +594,9 @@ class DirRun(Runner):
         ranker = FuzzyRanker
         s = Searcher(ranker=ranker,
                 output=CursesPrinter(),
-                whitespace_separated_multiquery=self.args.whitespace_separated_multiquery,
+                whitespace_separated_multiquery=self.args.multi_query,
                 match_on_path_query=self.args.match_path,
+                pattern_type=self.args.pattern_type,
                 )
         try:
             found = s.run(items, self.rows - 3)
@@ -587,21 +610,41 @@ class DirRun(Runner):
 def build_arg_parser():
     parser = argparse.ArgumentParser(description=__description__)
     parser.add_argument("--version", action="version", version="FuzzySnake " + __version__)
-    parser.add_argument('-s', '--save-to-file',
+    parser.add_argument("-w", "--write-to-file",
             metavar="FILENAME",
-            help='Writes the file to provided file instead of executing it.')
-    parser.add_argument('-g', '--include-gitignore-files',
-            action="store_false", help='Do not filter out files in .gitignore')
-    parser.add_argument('-w', '--whitespace-separated-multiquery',
-            action="store_true", help='Whitespace separates multiple queries')
-    parser.add_argument('-p', '--match-path',
-            action="store_true", help='Match on full directory path as well as basename')
+            help="Writes the file to provided file instead of executing it.")
+    parser.add_argument("-g", "--include-gitignore-files",
+            action="store_false", help="Do not filter out files in '.gitignore'.")
+    parser.add_argument("-m", "--multi-query",
+            action="store_true", help="Multiple query terms can be entered, with each term being separated by whitespace.")
+    parser.add_argument("-p", "--match-path",
+            action="store_true", help="Match on full directory path as well as basename.")
 
-    group = parser.add_mutually_exclusive_group()
-    group.add_argument('-d', action="store_const", dest="fileType", const="dirs",
-                        help='Directories only.')
-    group.add_argument('-a', action="store_const", dest="fileType", const="all",
-                        help='Both files and directories.')
+    pattern_type_group = parser.add_mutually_exclusive_group()
+    pattern_type_group.add_argument("-f", "--fuzzy",
+                        action="store_const",
+                        dest="pattern_type",
+                        const="fuzzy",
+                        help="Treat patterns as normal text (i.e., not a regular expression), with fuzzy matching.")
+    pattern_type_group.add_argument("-s", "--strict",
+                        action="store_const",
+                        dest="pattern_type",
+                        const="strict",
+                        help="Treat patterns as normal text (i.e., not a regular expression), with strict matching")
+    pattern_type_group.add_argument("-e", "--regexp",
+                        action="store_const",
+                        dest="pattern_type",
+                        const="regexp",
+                        help="Treat patterns entered as (Python-dialect) regular expressions.")
+    parser.set_defaults(pattern_type="fuzzy")
+
+    target_group = parser.add_mutually_exclusive_group()
+    target_group.add_argument("-F", "--files-only", action="store_const", dest="fileType", const="files",
+                        help="Match files only [default]")
+    target_group.add_argument("-d", "--dirs-only", action="store_const", dest="fileType", const="dirs",
+                        help="Match directory paths only")
+    target_group.add_argument("-a", "--all", action="store_const", dest="fileType", const="all",
+                        help="Match both directory and file paths.")
     parser.set_defaults(fileType="files")
 
     return parser.parse_args()
