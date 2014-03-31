@@ -50,6 +50,10 @@ Once you have selected a file, then:
     - If "`-s FILENAME`" is specified, however, then `ENTER` will result in the
       selected file being written out to "`FILENAME`".
 
+A demonstration of this program in usage can be found here:
+
+    https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
+
 Enhancing Your Shell with FuzzySnake
 ------------------------------------
 

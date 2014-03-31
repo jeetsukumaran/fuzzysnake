@@ -14,7 +14,7 @@ setup(name="fuzzysnake",
       scripts=["bin/fs"],
       author="Jeet Sukumaran",
       author_email="Jeet Sukumaran",
-      long_description=read('README.txt'),
+      long_description=read('README.rst'),
       classifiers=[
        "License :: OSI Approved :: Apache Software License",
        "Programming Language :: Python :: 2.7",
