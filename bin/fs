@@ -213,12 +213,15 @@ class Searcher(object):
 
     def _getch(self, blocking=True):
         if blocking:
-            self.output.window.timeout(-1)
+            # self.output.window.timeout(-1)
+            self.output.window.nodelay(0)
         else:
-            self.output.window.timeout(100)
+            # self.output.window.timeout(100)
+            self.output.window.nodelay(1)
         c = self.output.window.getch()
         if blocking: # restore
-            self.output.window.timeout(-1)
+            # self.output.window.timeout(-1)
+            self.output.window.nodelay(0)
         return c
 
     def _newHeap(self, query, curHeap):
