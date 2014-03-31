@@ -105,20 +105,20 @@ class Entry(object):
             score,
             match_start,
             match_end,
-            complete_path_match):
+            match_basename_only):
         self.dirname = dirname
         self.filename = filename
         self.score = score
-        self.complete_path_match = complete_path_match
+        self.match_basename_only = match_basename_only
         self._match_start_offset = match_start
         self._match_end_offset = match_end
 
         # TODO: make the follow dynamic attributes
         self.filepath = os.path.join(self.dirname, self.filename)
-        if self.complete_path_match:
-            self._candidate_start = 0
-        else:
+        if self.match_basename_only:
             self._candidate_start = len(os.path.join(self.dirname, ""))
+        else:
+            self._candidate_start = 0
 
     def _get_match_start(self):
         return self._candidate_start + self._match_start_offset
@@ -203,12 +203,12 @@ class Searcher(object):
             ranker,
             output,
             whitespace_separated_multiquery=False,
-            complete_path_match_query=False,
+            match_basename_only=False,
             pattern_type="fuzzy"):
         self.ranker = ranker
         self.output = output
         self.whitespace_separated_multiquery = whitespace_separated_multiquery
-        self.complete_path_match_query = complete_path_match_query
+        self.match_basename_only = match_basename_only
         self.pattern_type = pattern_type
 
     def _getch(self, blocking=True):
@@ -225,7 +225,7 @@ class Searcher(object):
         newHeap = []
         ranker = self.ranker(query=query,
                 whitespace_separated_multiquery=self.whitespace_separated_multiquery,
-                complete_path_match_query=self.complete_path_match_query,
+                match_basename_only=self.match_basename_only,
                 pattern_type=self.pattern_type)
         for w, item in curHeap:
             try:
@@ -496,10 +496,10 @@ class FuzzyRanker(object):
     def __init__(self,
             query,
             whitespace_separated_multiquery=False,
-            complete_path_match_query=False,
+            match_basename_only=False,
             pattern_type="fuzzy"):
         self.whitespace_separated_multiquery = whitespace_separated_multiquery
-        self.complete_path_match_query = complete_path_match_query
+        self.match_basename_only =match_basename_only
         self.weight_f = lambda f: f.dirname.count(os.sep) ** 0.5
         self.qs = query.lower()
         if self.whitespace_separated_multiquery:
@@ -509,10 +509,10 @@ class FuzzyRanker(object):
         self.pattern_type = pattern_type
 
     def rank(self, item):
-        if self.complete_path_match_query:
-            part = item.filepath
-        else:
+        if self.match_basename_only:
             part = item.filename
+        else:
+            part = item.filepath
         agg_score = 0.0
         match_start = len(part)
         match_end = -1
@@ -597,14 +597,14 @@ class DirRun(Runner):
                     score=0,
                     match_start=0,
                     match_end=-1,
-                    complete_path_match=self.args.complete_path_match)
+                    match_basename_only=self.args.basename_only_match)
             items.append(entry)
 
         ranker = FuzzyRanker
         s = Searcher(ranker=ranker,
                 output=CursesPrinter(),
                 whitespace_separated_multiquery=self.args.multi_query,
-                complete_path_match_query=self.args.complete_path_match,
+                match_basename_only=self.args.basename_only_match,
                 pattern_type=self.args.pattern_type,
                 )
         try:
@@ -623,8 +623,8 @@ def build_arg_parser():
     query_type_section = parser.add_argument_group("Query Type")
     query_type_section.add_argument("-m", "--multi-query",
             action="store_true", help="Multiple query patterns can be entered, with each pattern being separated by whitespace (defaults to entire expression being treated as single pattern).")
-    query_type_section.add_argument("-c", "--complete-path-match",
-            action="store_true", help="Match on complete path (defaults to matching on short-path, i.e. the tail or basename of the path only).")
+    query_type_section.add_argument("-b", "--basename-only-match",
+            action="store_true", help="Restrict match to the basename or tail of the path only (by default, entire path will be matched).")
     query_type_section.add_argument("-g", "--include-gitignore-files",
             action="store_false", help="Do not filter out files in '.gitignore'.")
 
