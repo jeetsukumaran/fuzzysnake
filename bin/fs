@@ -413,6 +413,7 @@ class DirectorySource(object):
     dot_dirs_ignore_pattern = None
 
     def __init__(self,
+            include_filename_patterns=None,
             ignore_directories=True,
             ignore_files=True,
             ignore_gitignores=True,
@@ -422,6 +423,10 @@ class DirectorySource(object):
         self.ignore_directories = ignore_directories
         self.ignore_files = ignore_files
         self.ignore_gitignores = ignore_gitignores
+        if include_filename_patterns is None:
+            self.include_filename_pattern = None
+        else:
+            self.include_filename_pattern = re.compile("(" + "|".join(include_filename_patterns) + ")")
         if dirs_to_exclude is None:
             self.dirs_to_exclude = None
         else:
@@ -476,7 +481,8 @@ class DirectorySource(object):
             names = []
             if not self.ignore_files:
                 for f in filenames:
-                    if self.files_to_exclude is None or not self.files_to_exclude.match(f):
+                    if ( (self.files_to_exclude is None or not self.files_to_exclude.match(f))
+                            and (self.include_filename_pattern is None or self.include_filename_pattern.match(f))):
                         # if self.paths_to_exclude is not None:
                         #     # only do this if actual paths to exclude
                         #     ff = os.path.join(dirname, f)
@@ -692,16 +698,14 @@ class DirRun(Runner):
 
     def find(self):
         ignore_gitignores = self.args.include_gitignore_files
-        if self.args.target_type == 'all':
-            ignore_directories = False
-            ignore_files = False
-        elif self.args.target_type == 'files':
-            ignore_directories = True
-            ignore_files = False
-        else:
+        if self.args.directory_search_mode:
             ignore_directories = False
             ignore_files = True
+        else:
+            ignore_directories = True
+            ignore_files = False
         ds = DirectorySource(
+                include_filename_patterns=args.include_filename_pattern,
                 ignore_directories=ignore_directories,
                 ignore_files=ignore_files,
                 ignore_gitignores=ignore_gitignores,
@@ -780,6 +784,12 @@ def build_arg_parser():
             "treated as single pattern. Use `<CTRL-W>` to toggle this "
             "option on and off during the search.")
     query_options_section.add_argument(
+            "-d", "--directory-paths",
+            action="store_true",
+            dest="directory_search_mode",
+            default=False,
+            help="Search for directory paths instead of filenames.")
+    query_options_section.add_argument(
             "-b", "--basename-only-match",
             action="store_true",
 	    help="Restrict match to the basename or tail of the path only "
@@ -817,14 +827,401 @@ def build_arg_parser():
 	    "by typing `<CTRL-L>`.")
     parser.set_defaults(match_type="fuzzy")
 
-    target_group = parser.add_argument_group("Target Options")
-    target_group.add_argument(
-            "-d", "--dirs-only",
-            action="store_const",
-            dest="target_type",
-            const="dirs",
-            default="files",
-            help="Search for directories only.")
+    target_type_options = parser.add_argument_group("Target Type Options",
+            "Specific types of files to include in the search. If one or more "
+            "of the following are specified, then other types of files will be "
+            "excluded."
+            )
+    target_type_options.add_argument(
+            "--actionscript",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.as$|.*\.mxml$",
+            help="Include ActionScript files.")
+    target_type_options.add_argument(
+            "--ada",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.ada$|.*\.adb$|.*\.ads$",
+            help="Include Ada files.")
+    target_type_options.add_argument(
+            "--asm",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.asm$|.*\.s$",
+            help="Include ASM files.")
+    target_type_options.add_argument(
+            "--asp",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.asp$",
+            help="Include ASP files.")
+    target_type_options.add_argument(
+            "--aspx",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.master$|.*\.ascx$|.*\.asmx$|.*\.aspx$|.*\.svc$",
+            help="Include ASPX files.")
+    target_type_options.add_argument(
+            "--autotools",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r"Makefile.am|configure.ac",
+            help="Include Autotools files.")
+    target_type_options.add_argument(
+            "--batch",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.bat$|.*\.cmd$",
+            help="Include MS-DOS/Windows batch files.")
+    target_type_options.add_argument(
+            "--cfmx",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.cfc$|.*\.cfm$|.*\.cfml$",
+            help="Include ColdFusion files.")
+    target_type_options.add_argument(
+            "--clojure",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.clj$",
+            help="Include Clojure files.")
+    target_type_options.add_argument(
+            "--cmake",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r"CMakeLists\.txt|.*\.cmake$",
+            help="Include CMake files.")
+    target_type_options.add_argument(
+            "--coffeescript",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.coffee$",
+            help="Include CoffeeScript files.")
+    target_type_options.add_argument(
+            "--cpp",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.cpp$|.*\.cc$|.*\.cxx$|.*\.c++$|.*\.c|.*\.m$|.*\.hpp$|.*\.hh$|.*\.h$|.*\.hxx|.*\.h++|.*\.inc$",
+            help="Include C++ (and C) files.")
+    target_type_options.add_argument(
+            "--csharp",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.cs$",
+            help="Include C# files.")
+    target_type_options.add_argument(
+            "--css",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.css$",
+            help="Include CSS files.")
+    target_type_options.add_argument(
+            "--dart",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.dart$",
+            help="Include Dart files.")
+    target_type_options.add_argument(
+            "--delphi",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.pas$|.*\.int$|.*\.dfm$|.*\.nfm$|.*\.dof$|.*\.dpk$|.*\.dproj$|.*\.groupproj$|.*\.bdsgroup$|.*\.bdsproj$",
+            help="Include Delphi files.")
+    target_type_options.add_argument(
+            "--elisp",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.el$",
+            help="Include Emacs Lisp files.")
+    target_type_options.add_argument(
+            "--elixir",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.ex$|.*\.exs$",
+            help="Include Elixir files.")
+    target_type_options.add_argument(
+            "--erlang",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.erl$|.*\.hrl$",
+            help="Include Erlang files.")
+    target_type_options.add_argument(
+            "--fortran",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.f$|.*\.f77$|.*\.f90$|.*\.f95$|.*\.f03$|.*\.for$|.*\.ftn$|.*\.fpp$",
+            help="Include Fortran files.")
+    target_type_options.add_argument(
+            "--go",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.go$",
+            help="Include Go files.")
+    target_type_options.add_argument(
+            "--groovy",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.groovy$|.*\.gtmpl$|.*\.gpp$|.*\.grunit$|.*\.gradle$",
+            help="Include Groovy files.")
+    target_type_options.add_argument(
+            "--haskell",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.hs$|.*\.lhs$",
+            help="Include Haskell files.")
+    target_type_options.add_argument(
+            "--html",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.htm$|.*\.html$",
+            help="Include HTML files.")
+    target_type_options.add_argument(
+            "--java",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.java$|.*\.properties$",
+            help="Include Java files.")
+    target_type_options.add_argument(
+            "--js",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.js$",
+            help="Include JavaScript files.")
+    target_type_options.add_argument(
+            "--json",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.json$",
+            help="Include JSON files.")
+    target_type_options.add_argument(
+            "--jsp",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.jsp$|.*\.jspx$|.*\.jhtm$|.*\.jhtml$",
+            help="Include JavaServerPages files.")
+    target_type_options.add_argument(
+            "--less",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.less$",
+            help="Include Less files.")
+    target_type_options.add_argument(
+            "--lisp",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.lisp$|.*\.lsp$",
+            help="Include Lisp files.")
+    target_type_options.add_argument(
+            "--lua",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.lua$",
+            help="Include Lua files.")
+    target_type_options.add_argument(
+            "--make",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.mk$|.*\.mak$|makefile|Makefile|GNUmakefile",
+            help="Include Make files.")
+    target_type_options.add_argument(
+            "--markdown",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.mdown|.*\.markdown|.*\.md$",
+            help="Include Markdown files.")
+    target_type_options.add_argument(
+            "--matlab",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.m$",
+            help="Include MATLAB files.")
+    target_type_options.add_argument(
+            "--objc",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.m$|.*\.h$",
+            help="Include Objective-C files.")
+    target_type_options.add_argument(
+            "--objcpp",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.mm$|.*\.h$",
+            help="Include Objective-C++ files.")
+    target_type_options.add_argument(
+            "--ocaml",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.ml$|.*\.mli$",
+            help="Include OCaml files.")
+    target_type_options.add_argument(
+            "--parrot",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.pir$|.*\.pasm$|.*\.pmc$|.*\.ops$|.*\.pod$|.*\.pg$|.*\.tg$",
+            help="Include Parrot files.")
+    target_type_options.add_argument(
+            "--perl",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.pl$|.*\.pm$|.*\.pod$|.*\.t$|.*\.psgi$",
+            help="Include Perl files.")
+    target_type_options.add_argument(
+            "--perl-test",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.t$",
+            help="Include Perl test files.")
+    target_type_options.add_argument(
+            "--php",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.php$|.*\.phpt$|.*\.php3$|.*\.php4$|.*\.php5$|.*\.phtml$",
+            help="Include PHP files.")
+    target_type_options.add_argument(
+            "--plone",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.pt$|.*\.cpt$|.*\.metadata$|.*\.cpy$|.*\.py$",
+            help="Include Plone files.")
+    target_type_options.add_argument(
+            "--python",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.py$",
+            help="Include Python files.")
+    target_type_options.add_argument(
+            "--rake",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r"Rakefile",
+            help="Include Rake files.")
+    target_type_options.add_argument(
+            "--r",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.R$|.*\.r$",
+            help="Include R files.")
+    target_type_options.add_argument(
+            "--rst",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.rst$|.*\.txt$|.*\.inc$",
+            help="Include ReStructuredText files.")
+    target_type_options.add_argument(
+            "--ruby",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.rb$|.*\.rhtml$|.*\.rjs$|.*\.rxml$|.*\.erb$|.*\.rake$|.*\.spec$|Rakefile",
+            help="Include Ruby files.")
+    target_type_options.add_argument(
+            "--rust",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.rs$",
+            help="Include Rust files.")
+    target_type_options.add_argument(
+            "--sass",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.sass$|.*\.scss$",
+            help="Include Sass files.")
+    target_type_options.add_argument(
+            "--scala",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.scala$",
+            help="Include Scala files.")
+    target_type_options.add_argument(
+            "--scheme",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.scm$|.*\.ss$",
+            help="Include Scheme files.")
+    target_type_options.add_argument(
+            "--shell",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.sh$|.*\.bash$|.*\.csh$|.*\.tcsh$|.*\.ksh$|.*\.zsh$|.*\.fish$",
+            help="Include shell files.")
+    target_type_options.add_argument(
+            "--smalltalk",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.st$",
+            help="Include Smalltalk files.")
+    target_type_options.add_argument(
+            "--sphinx",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.rst$|.*\.txt$|.*\.inc|conf\.py",
+            help="Include Sphinx files.")
+    target_type_options.add_argument(
+            "--sql",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.sql$|.*\.ctl$",
+            help="Include SQL files.")
+    target_type_options.add_argument(
+            "--tcl",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.tcl$|.*\.itcl$|.*\.itk$",
+            help="Include TCl files.")
+    target_type_options.add_argument(
+            "--tex",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.tex$|.*\.bib$",
+            help="Include TeX files.")
+    target_type_options.add_argument(
+            "--tex-all",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.tex$|.*\.cls$|.*\.sty$|.*\.bib$",
+            help="Include TeX files.")
+    target_type_options.add_argument(
+            "--tt",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.tt$|.*\.tt2$|.*\.ttml$",
+            help="Include TT files.")
+    target_type_options.add_argument(
+            "--vb",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.bas$|.*\.cls$|.*\.frm$|.*\.ctl$|.*\.vb$|.*\.resx$",
+            help="Include VisualBasic files.")
+    target_type_options.add_argument(
+            "--verilog",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.v$|.*\.vh$|.*\.sv$",
+            help="Include Verilog files.")
+    target_type_options.add_argument(
+            "--vhdl",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.vhd$|.*\.vhdl$",
+            help="Include VHDL files.")
+    target_type_options.add_argument(
+            "--vim",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.vim$",
+            help="Include Vim files.")
+    target_type_options.add_argument(
+            "--xml",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.xml$|.*\.dtd$|.*\.xsl$|.*\.xslt$|.*\.ent$",
+            help="Include XML files.")
+    target_type_options.add_argument(
+            "--yaml",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.yaml$|.*\.yml$",
+            help="Include YAML files.")
 
     exclude_options_group = parser.add_argument_group("Exclusion Options")
     exclude_options_group.add_argument(
