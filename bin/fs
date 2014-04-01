@@ -409,10 +409,20 @@ class Searcher(object):
 
 class DirectorySource(object):
 
-    def __init__(self, ignore_directories=True, ignore_files=True, ignore_gitignores=True):
+    dot_dirs_ignore_pattern = None
+
+    def __init__(self,
+            ignore_directories=True,
+            ignore_files=True,
+            ignore_gitignores=True):
         self.ignore_directories = ignore_directories
         self.ignore_files = ignore_files
         self.ignore_gitignores = ignore_gitignores
+        if DirectorySource.dot_dirs_ignore_pattern is None:
+            dot_dirs_to_ignore = ["git", "svn", "hg"]
+            dot_dirs_to_ignore = ["(.*/|)\.{}".format(d) for d in dot_dirs_to_ignore]
+            dot_dirs_ignore_pattern = "(" + "|".join(dot_dirs_to_ignore) + ")"
+            DirectorySource.dot_dirs_ignore_pattern = re.compile(dot_dirs_ignore_pattern)
 
     def recurse_directory_up(self, dirname):
         if os.path.isdir(dirname):
@@ -443,6 +453,8 @@ class DirectorySource(object):
         if results is None:
             results = []
         for dirname, dirs, filenames in walk(start_dir):
+            if DirectorySource.dot_dirs_ignore_pattern.match(dirname):
+                continue
             names = []
             if not self.ignore_files:
                 names = filenames
@@ -457,11 +469,9 @@ class DirectorySource(object):
                 if dirname.startswith(path):
                     break
                 all_filters.pop()
-
             fltr = None
             if all_filters:
                 fltr = all_filters[-1][1]
-
             for name in names:
                 if fltr is None or fltr(name, dirname):
                     entry = Entry(dirname=dirname,
