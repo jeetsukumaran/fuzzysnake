@@ -62,6 +62,7 @@ __description__ = __doc__
 __author__ = 'Jeet Sukumaran'
 __copyright__ = 'Copyright (C) 2014 Jeet Sukumaran.'
 
+
 ##############################################################################
 ## Util.py
 
@@ -759,71 +760,113 @@ class DirRun(Runner):
 def build_arg_parser():
     parser = argparse.ArgumentParser(description=__description__)
     parser.add_argument("--version", action="version", version="FuzzySnake " + __version__)
+
     source_options_group = parser.add_argument_group("Source Options")
-    source_options_group.add_argument("paths",
+    source_options_group.add_argument(
+            "paths",
             metavar="DIR",
             nargs="*",
-            help="Top-level directory path(s) to search. Defaults to current directory ('{}').".format(os.curdir))
+            help="Top-level directory path(s) to search. Defaults to "
+            "current directory ('{}').".format(os.curdir))
+
     query_options_section = parser.add_argument_group("Query Options")
-    query_options_section.add_argument("-m", "--multi-pattern",
-            action="store_true", help="Whitespace-separated multiple-queries: whitespaces in the query will be treated as separators for query terms, allowing multiple query terms to be used simultaneosly. If not specified, defaults to entire expression being treated as single pattern. Use `<CTRL-W>` to toggle this option on and off during the search.")
-    query_options_section.add_argument("-b", "--basename-only-match",
-            action="store_true", help="Restrict match to the basename or tail of the path only (by default, entire path will be matched). Use `<CTRL-B>` to toggle this option on and off during the search.")
-    exclude_options_group = parser.add_argument_group("Inclusion/Exclusion Options")
-    exclude_options_group.add_argument("-i", "--include-gitignore-files",
-            action="store_false", help="Do not filter out files in '.gitignore' (by default, these are filtered out).")
-    exclude_options_group.add_argument("-v", "--exclude-dir-patterns",
-            action="append",
-            metavar="PATTERN",
-            dest="dirs_to_exclude",
-            help="Regular expression patterns to be matched to directory names(s) to exclude. Multiple path patterns may be specified by, e.g.: '-v path1 -v path2 -v path3'.")
-    exclude_options_group.add_argument("-V", "--exclude-file-patterns",
-            action="append",
-            metavar="PATTERN",
-            dest="files_to_exclude",
-            help="Regular expression patterns to be matched to filename(s) to exclude. Multiple path patterns may be specified by, e.g.: '-V path1 -V path2 -V path3'.")
-    match_type_section = parser.add_argument_group("Matching Mode")
+    query_options_section.add_argument(
+            "-m", "--multi-pattern",
+            action="store_true",
+            help="Whitespace-separated multiple-queries: whitespaces in "
+            "the query will be treated as separators for query terms, "
+            "allowing multiple query terms to be used simultaneosly. "
+            "If not specified, defaults to entire expression being "
+            "treated as single pattern. Use `<CTRL-W>` to toggle this "
+            "option on and off during the search.")
+    query_options_section.add_argument(
+            "-b", "--basename-only-match",
+            action="store_true",
+	    help="Restrict match to the basename or tail of the path only "
+	    "(by default, entire path will be matched). Use `<CTRL-B>` to "
+	    "toggle this option on and off during the search.")
+
+    match_type_section = parser.add_argument_group("Match Mode Options")
     match_type_group = match_type_section.add_mutually_exclusive_group()
-    match_type_group.add_argument("-f", "--fuzzy",
+    match_type_group.add_argument(
+            "-f", "--fuzzy",
             action="store_const",
             dest="match_type",
             const="fuzzy",
-            help="[DEFAULT] Fuzzy-matching mode: pattern is matched on a character-by-character basis, with characters required to occur in the same order as the pattern, but not necessarily consecutively (an arbitrary number of extra characters are allowed between matched characters). You can force selection of this mode during the search by typing `<CTRL-R>`.")
-    match_type_group.add_argument("-e", "--regexp",
+	    help="[DEFAULT] Fuzzy-matching mode: pattern is matched on a "
+	    "character-by-character basis, with characters required to "
+	    "occur in the same order as the pattern, but not necessarily "
+	    "consecutively (an arbitrary number of extra characters are "
+	    "allowed between matched characters). You can force selection "
+	    "of this mode during the search by typing `<CTRL-R>`.")
+    match_type_group.add_argument(
+            "-e", "--regexp",
             action="store_const",
             dest="match_type",
             const="regexp",
-            help="Regular-expression mode: patterns are matched as full (Python) regular expression patterns. You can force selection of this mode during the search by typing `<CTRL-E>`.")
-    match_type_group.add_argument("-l", "--literal",
+	    help="Regular-expression mode: patterns are matched as full "
+	    "(Python) regular expression patterns. You can force selection "
+	    "of this mode during the search by typing `<CTRL-E>`.")
+    match_type_group.add_argument(
+            "-l", "--literal",
             action="store_const",
             dest="match_type",
             const="literal",
-            help="Literal-matching mode: patterns are matched exactly as given. You can force selection of this mode during the search by typing `<CTRL-L>`.")
+	    help="Literal-matching mode: patterns are matched exactly as "
+	    "given. You can force selection of this mode during the search "
+	    "by typing `<CTRL-L>`.")
     parser.set_defaults(match_type="fuzzy")
 
-    target_group_section = parser.add_argument_group("Target Type")
-    target_group = target_group_section.add_mutually_exclusive_group()
-    target_group.add_argument("-F", "--files-only", action="store_const", dest="target_type", const="files",
-            help="[DEFAULT] Search for files only.")
-    target_group.add_argument("-d", "--dirs-only", action="store_const", dest="target_type", const="dirs",
+    target_group = parser.add_argument_group("Target Options")
+    target_group.add_argument(
+            "-d", "--dirs-only",
+            action="store_const",
+            dest="target_type",
+            const="dirs",
+            default="files",
             help="Search for directories only.")
-    target_group.add_argument("-a", "--all", action="store_const", dest="target_type", const="all",
-            help="Search for both directories and filess.")
-    parser.set_defaults(target_type="files")
 
-    action_group_section = parser.add_argument_group("Action Type")
+    exclude_options_group = parser.add_argument_group("Exclusion Options")
+    exclude_options_group.add_argument(
+            "-D", "--exclude-dir-patterns",
+            action="append",
+            metavar="PATTERN",
+            dest="dirs_to_exclude",
+	    help="Regular expression patterns to be matched to directory "
+	    "names(s) to exclude. Multiple path patterns may be specified "
+	    "by, e.g.: '-D path1 -D path2 -D path3'.")
+    exclude_options_group.add_argument(
+            "-F", "--exclude-file-patterns",
+            action="append",
+            metavar="PATTERN",
+            dest="files_to_exclude",
+	    help="Regular expression patterns to be matched to filename(s) "
+	    "to exclude. Multiple path patterns may be specified by, e.g.: "
+	    "'-F path1 -F path2 -F path3'.")
+    exclude_options_group.add_argument(
+            "--include-gitignore-files",
+            action="store_false",
+	    help="Do not filter out files in '.gitignore' (by default, "
+	    "these are filtered out).")
+
+    action_group_section = parser.add_argument_group("Action Options")
     action_group = action_group_section.add_mutually_exclusive_group()
-    action_group.add_argument("-E", "--edit",
+    action_group.add_argument(
+            "-E", "--edit",
             action="store_const",
             dest="action_type",
             const="edit",
-            help="[DEFAULT] Opens file in editor (with editor program specified by, in order of resolution, '$FUZZYSNAKE_EDITOR' or '$EDITOR').")
-    action_group.add_argument("-p", "--print",
+	    help="[DEFAULT] Opens file in editor (with editor program "
+	    "specified by, in order of resolution, '$FUZZYSNAKE_EDITOR' or "
+	    "'$EDITOR').")
+    action_group.add_argument(
+            "-p", "--print",
             action="store_const",
             dest="action_type",
             const="print",
             help="Prints selected filepath to standard output.")
-    action_group.add_argument("-o", "--open",
+    action_group.add_argument(
+            "-o", "--open",
             action="store_const",
             dest="action_type",
             const="open",
