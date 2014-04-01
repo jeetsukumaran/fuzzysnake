@@ -414,10 +414,25 @@ class DirectorySource(object):
     def __init__(self,
             ignore_directories=True,
             ignore_files=True,
-            ignore_gitignores=True):
+            ignore_gitignores=True,
+            dirs_to_exclude=None,
+            files_to_exclude=None,
+            paths_to_exclude=None):
         self.ignore_directories = ignore_directories
         self.ignore_files = ignore_files
         self.ignore_gitignores = ignore_gitignores
+        if dirs_to_exclude is None:
+            self.dirs_to_exclude = None
+        else:
+            self.dirs_to_exclude = re.compile("(" + "|".join(dirs_to_exclude) + ")")
+        if files_to_exclude is None:
+            self.files_to_exclude = None
+        else:
+            self.files_to_exclude = re.compile("(" + "|".join(files_to_exclude) + ")")
+        if paths_to_exclude is None:
+            self.paths_to_exclude = None
+        else:
+            self.paths_to_exclude = re.compile("(" + "|".join(paths_to_exclude) + ")")
         if DirectorySource.dot_dirs_ignore_pattern is None:
             dot_dirs_to_ignore = ["git", "svn", "hg"]
             dot_dirs_to_ignore = ["(.*/|)\.{}".format(d) for d in dot_dirs_to_ignore]
@@ -455,9 +470,20 @@ class DirectorySource(object):
         for dirname, dirs, filenames in walk(start_dir):
             if DirectorySource.dot_dirs_ignore_pattern.match(dirname):
                 continue
+            if self.dirs_to_exclude is not None and self.dirs_to_exclude.match(dirname):
+                continue
             names = []
             if not self.ignore_files:
-                names = filenames
+                for f in filenames:
+                    if self.files_to_exclude is None or not self.files_to_exclude.match(f):
+                        # if self.paths_to_exclude is not None:
+                        #     # only do this if actual paths to exclude
+                        #     ff = os.path.join(dirname, f)
+                        #     if not self.paths_to_exclude.match(f):
+                        #         names.append(f)
+                        # else:
+                        #     names.append(f)
+                        names.append(f)
             if not self.ignore_directories:
                 names.extend(dirs)
             if self.ignore_gitignores and '.gitignore' in filenames:
@@ -666,17 +692,25 @@ class DirRun(Runner):
     def find(self):
         ignore_gitignores = self.args.include_gitignore_files
         if self.args.target_type == 'all':
-            ds = DirectorySource(ignore_directories=False,
-                    ignore_files=False, ignore_gitignores=ignore_gitignores)
+            ignore_directories = False
+            ignore_files = False
         elif self.args.target_type == 'files':
-            ds = DirectorySource(ignore_files=False, ignore_gitignores=ignore_gitignores)
+            ignore_directories = True
+            ignore_files = False
         else:
-            ds = DirectorySource(ignore_directories=False, ignore_gitignores=ignore_gitignores)
-        paths = self.args.paths
-        if not paths:
-            paths = ["."]
+            ignore_directories = False
+            ignore_files = True
+        ds = DirectorySource(
+                ignore_directories=ignore_directories,
+                ignore_files=ignore_files,
+                ignore_gitignores=ignore_gitignores,
+                dirs_to_exclude=args.dirs_to_exclude,
+                files_to_exclude=args.files_to_exclude)
+        search_paths = self.args.paths
+        if not search_paths:
+            search_paths = ["."]
         items = []
-        for path in paths:
+        for path in search_paths:
             if path == "-":
                 if sys.platform.startswith('win'):
                     raise NotImplementedError("Reading from standard input is not supported on this system at this time")
@@ -735,9 +769,19 @@ def build_arg_parser():
             action="store_true", help="Whitespace-separated multiple-queries: whitespaces in the query will be treated as separators for query terms, allowing multiple query terms to be used simultaneosly. If not specified, defaults to entire expression being treated as single pattern. Use `<CTRL-W>` to toggle this option on and off during the search.")
     query_options_section.add_argument("-b", "--basename-only-match",
             action="store_true", help="Restrict match to the basename or tail of the path only (by default, entire path will be matched). Use `<CTRL-B>` to toggle this option on and off during the search.")
-    query_options_section.add_argument("-g", "--include-gitignore-files",
-            action="store_false", help="Do not filter out files in '.gitignore'.")
-
+    exclude_options_group = parser.add_argument_group("Inclusion/Exclusion Options")
+    exclude_options_group.add_argument("-i", "--include-gitignore-files",
+            action="store_false", help="Do not filter out files in '.gitignore' (by default, these are filtered out).")
+    exclude_options_group.add_argument("-v", "--exclude-dir-patterns",
+            action="append",
+            metavar="PATTERN",
+            dest="dirs_to_exclude",
+            help="Regular expression patterns to be matched to directory names(s) to exclude. Multiple path patterns may be specified by, e.g.: '-v path1 -v path2 -v path3'.")
+    exclude_options_group.add_argument("-V", "--exclude-file-patterns",
+            action="append",
+            metavar="PATTERN",
+            dest="files_to_exclude",
+            help="Regular expression patterns to be matched to filename(s) to exclude. Multiple path patterns may be specified by, e.g.: '-V path1 -V path2 -V path3'.")
     match_type_section = parser.add_argument_group("Matching Mode")
     match_type_group = match_type_section.add_mutually_exclusive_group()
     match_type_group.add_argument("-f", "--fuzzy",
