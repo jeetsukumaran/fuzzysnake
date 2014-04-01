@@ -506,7 +506,7 @@ class GitIgnoreFilter(object):
                 if fn.startswith('#'):
                     continue
                 fn = fn.strip()
-                if fn.startswith('/') or fn.endswith('\\'):
+                if fn.startswith('/') or fn.endswith('/'):
                     path_filters.append(fn)
                 elif gc.search(fn) is not None:
                     glob_filters.append(fn)
@@ -522,10 +522,10 @@ class GitIgnoreFilter(object):
     def setup_path_filters(self, path_filters):
         dirmaps = {}
         for pf in path_filters:
-            while pf.endswith('/') or pf.endswith('\\'):
+            while pf.endswith('/'):
                 pf = pf[:-1]
             dirname, basename = os.path.split(pf)
-            dm = os.path.join(self.dirname, dirname).rstrip('/').rstrip('\\')
+            dm = os.path.join(self.dirname, dirname).rstrip('/')
             glob = basename.strip()
             if dm in dirmaps:
                 dirmaps[dm].append(glob)
