@@ -65,6 +65,16 @@ __copyright__ = 'Copyright (C) 2014 Jeet Sukumaran.'
 ##############################################################################
 ## Util.py
 
+def dump_stack(out=None):
+    import inspect
+    if out is None:
+        out = sys.stderr
+    for frame, filename, line_num, func, source_code, source_index in inspect.stack()[2:]:
+        if source_code is None:
+            out.write("{}: {}\n".format(filename, line_num))
+        else:
+            out.write("{}: {}: {}\n".format(filename, line_num, source_code[source_index].strip()))
+
 def truncate_front(line, length=70):
     reduce_amt = len(line) - length
     # If it already fits
@@ -86,14 +96,6 @@ def truncate_middle(line, length=70):
     start = (len(line) / 2) - (reduce_amt / 2)
     end = start + reduce_amt
     return "%s...%s" % (line[:start], line[end:])
-
-def rec_dir_up(dir):
-    if os.path.isdir(dir):
-        while True:
-            yield dir
-            newdir = os.path.split(dir)[0]
-            if newdir == dir: break
-            dir = newdir
 
 ##############################################################################
 ## Entry
@@ -412,12 +414,21 @@ class DirectorySource(object):
         self.ignore_files = ignore_files
         self.ignore_gitignores = ignore_gitignores
 
+    def recurse_directory_up(self, dirname):
+        if os.path.isdir(dirname):
+            while True:
+                yield dirname
+                newdir = os.path.dirname(dirname)
+                if not newdir or newdir == dirname:
+                    break
+                dirname = newdir
+
     def find_parent_gis(self, start_dir):
         gitignore_filters = []
-        dirs = rec_dir_up(start_dir)
-        next(dirs)
-        # dirs.next()
+        dirs = self.recurse_directory_up(start_dir)
         for dirname in dirs:
+            if dirname == start_dir:
+                continue
             pgi = os.path.join(dirname, '.gitignore')
             if os.path.isfile(pgi):
                 gitignore_filters.append(GitIgnoreFilter(dirname, '.gitignore'))
@@ -485,41 +496,31 @@ class GitIgnoreFilter(object):
                 if fn.startswith('#'):
                     continue
                 fn = fn.strip()
-                if fn.startswith('/'):
+                if fn.startswith('/') or fn.endswith('\\'):
                     path_filters.append(fn)
                 elif gc.search(fn) is not None:
-                    glob_filters.append(fnmatch.translate(fn.strip()))
+                    glob_filters.append(fn)
                 else:
                     exact_filters.add(fn)
-
         if glob_filters:
-            self.glob_filters = [re.compile('|'.join(glob_filters))]
+            self.glob_filters = glob_filters
         else:
             self.glob_filters = []
-
         self.exact_filters = exact_filters
         self.path_filters = self.setup_path_filters(path_filters)
 
     def setup_path_filters(self, path_filters):
-        # We can currently glob on only filename positions
         dirmaps = {}
         for pf in path_filters:
-            while pf.endswith('/'):
+            while pf.endswith('/') or pf.endswith('\\'):
                 pf = pf[:-1]
-
             dirname, basename = os.path.split(pf)
-            dm = os.path.join(self.dirname, dirname.lstrip('/'))
-            glob = fnmatch.translate(basename.strip())
+            dm = os.path.join(self.dirname, dirname).rstrip('/').rstrip('\\')
+            glob = basename.strip()
             if dm in dirmaps:
                 dirmaps[dm].append(glob)
             else:
                 dirmaps[dm] = [glob]
-
-        # Build glob maps
-        for k in dirmaps.keys():
-            vs = dirmaps[k]
-            dirmaps[k] = re.compile('|'.join(vs))
-
         return dirmaps
 
     def __call__(self, fn, dirname):
@@ -528,17 +529,16 @@ class GitIgnoreFilter(object):
             return False
         # Check global globs
         for f in self.glob_filters:
-            if f.match(os.path.join(dirname, fn)) is not None:
+            if fnmatch.fnmatch(os.path.join(dirname, fn), f):
                 return False
-            if f.match(fn) is not None:
+            if fnmatch.fnmatch(fn, f):
                 return False
-
         lpf = self.path_filters.get(dirname)
-
         # check path dependent globs
-        if lpf is not None and lpf.match(fn) is not None:
-            return False
-
+        if lpf is not None:
+            for f in lpf:
+                if fnmatch.fnmatch(fn, f):
+                    return False
         return True
 
 class FuzzyRanker(object):
