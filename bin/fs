@@ -734,7 +734,7 @@ def build_arg_parser():
             action="store_const",
             dest="match_type",
             const="fuzzy",
-            help="[DEFAULT] Fuzzy-matching mode: patterns are matched on character-by-character basis in the same order as given, but not necessarily consecutively. You can force selection of this mode during the search by typing `<CTRL-R>`.")
+            help="[DEFAULT] Fuzzy-matching mode: pattern is matched on a character-by-character basis, with characters required to occur in the same order as the pattern, but not necessarily consecutively (an arbitrary number of extra characters are allowed between matched characters). You can force selection of this mode during the search by typing `<CTRL-R>`.")
     match_type_group.add_argument("-e", "--regexp",
             action="store_const",
             dest="match_type",
