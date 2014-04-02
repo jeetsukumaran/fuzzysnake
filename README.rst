@@ -155,34 +155,71 @@ see files ignored by '`.gitignore`' directives, then use the
 Stacking With `find`, `ack`, etc.
 ---------------------------------
 If you invoke `FuzzySnake` with '-' as an argument, it will read entries from
-the standard input pipe. This lets you use a external program, such as `find
-<http://linux.about.com/od/commands/l/blcmdl1_find.htm>`_ or `ack
-<http://beyondgrep.com/>`_, to make a first pass at file-discovery, and then
-use `FuzzySnake` to dynamically select the final result with precision::
+the standard input pipe. This lets you use an external program (such as `find
+<http://linux.about.com/od/commands/l/blcmdl1_find.htm>`_, `ack
+<http://beyondgrep.com/>`_, or `The Silver Searcher
+<https://github.com/ggreer/the_silver_searcher>`_) to make a first pass at
+file-discovery, and then use `FuzzySnake` to dynamically select the final
+result with precision::
 
     $ find ~/projects -type f | fz -
     $ find ~/projects -name '*.py' | fz -
     $ ack -f | fz -
+    $ ag -f | fz -
+
+If you want to permanently couple the speed of these file discovery engines
+with the dynamic interactivity of `FuzzySnake`, add the following to your
+"`~/.bashrc`::
+
+    alias fzfind='find . -type f | fz -'
+    alias fzack='ack -f | fz -'
+    alias fzag='ag -f | fz -'
+
+Simultaneous Multiple Queries
+-----------------------------
+Using the '`-m`' flag, multiple queries can be run simultaneously,
+with whitespace separating query terms: a query for "hello world" would
+result in two filters: "hello" and "world", requiring a file to match both.
+This can be useful for specifying part of a filename and then the file
+extension.
 
 Enhancing Your Shell with FuzzySnake
 ------------------------------------
 
-- To set `<CTRL-F>` as a hot-key to invoke FuzzySnake, add the following to your
-  "`~/.bashrc`::
+The '`fztricks.sh`' file included with the `FuzzySnake` distribution includes
+some useful enhancements for your shell. To use them, source the file into you
+current session::
+
+    $ . fztricks.sh
+
+If you like them enough to keep them permanently, copy the contents of the file
+'`fztricks.sh`' to your '`~/.bashrc`', or add a line in your '`~/.bashrc`' to
+source the file.
+
+These enhancements include:
+
+- Setting `<CTRL-F>` as a hot-key to invoke FuzzySnake::
 
     bind '"\C-f": "fz\n"'
 
-- To have couple the power of `ack` with `FuzzySnake`, add the following to your
-  "`~/.bashrc`::
+- A new command, `fd`, to change to a directory selected via `FuzzySnake`::
 
-    alias fzack='ack -f | fz -'
-
-- If you have lots of files with similar names, add the '-w' flag to allow
-  multiple searchers. With this flag, multiple queries can be run simulatneous,
-  with whitespace separating query terms: a query for "hello world" would
-  result in two filters: "hello" and "world", requiring a file to match both.
-  This can be useful for specifying part of a filename and then the file
-  extension.
+    function fd() {
+        _OFILE=/tmp/fz.out
+        if [ -f $_OFILE ]
+        then
+            rm $_OFILE
+        fi
+        fz -d -p $_OFILE
+        if [ -f $_OFILE ]
+        then
+            targetdir=$(cat $_OFILE)
+            echo "$targetdir"
+            cd "${targetdir}"
+            rm $_OFILE
+        fi
+        unset _OFILE
+    }
 
 Acknowledgements
 ----------------

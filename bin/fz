@@ -694,6 +694,15 @@ class Runner(object):
                     sys.stderr.write("Failed to execute: os.execvp('{}', ['{}', {}])\n".format(self.editor_path, self.editor_path, filename))
                     sys.exit(1)
             elif args.action_type == "print":
+                if not hasattr(args, "action_target") or args.action_target == "-":
+                    out = sys.stdout
+                else:
+                    out = open(os.path.expandvars(os.path.expanduser(args.action_target)), "w")
+                with out:
+                    out.write(filename)
+                    out.write("\n")
+                sys.exit(0)
+            elif args.action_type == "print":
                 sys.stdout.write(filename)
                 sys.stdout.write("\n")
                 sys.exit(0)
@@ -1275,24 +1284,33 @@ def build_arg_parser():
             action="store_const",
             dest="action_type",
             const="edit",
-            help="[DEFAULT] Opens file in editor (with editor program "
-            "specified by, in order of resolution, '$FUZZYSNAKE_EDITOR' or "
-            "'$EDITOR').")
+            help="[DEFAULT] Opens selected file or directory for editing "
+            "(with editor program specified by, in order of resolution, "
+            "'$FUZZYSNAKE_EDITOR' or '$EDITOR').")
     action_group.add_argument(
             "-p", "--print",
-            action="store_const",
+            action=SetPrintAction,
             dest="action_type",
-            const="print",
-            help="Prints selected filepath to standard output.")
+            metavar="FILEPATH",
+            help="Prints the selected file or directory name to FILEPATH (use '-' to specify standard output).")
     action_group.add_argument(
             "-o", "--open",
             action="store_const",
             dest="action_type",
             const="open",
-            help="Passes filepath to 'open' command.")
+            help="Passes selected filepath to 'open' command.")
     parser.set_defaults(action_type="edit")
 
     return parser.parse_args()
+
+class SetPrintAction(argparse.Action):
+    def __call__(self,
+            parser,
+            namespace,
+            values,
+            option_string=None):
+        namespace.action_type = "print"
+        namespace.action_target = values
 
 if __name__ == '__main__':
     args = build_arg_parser()
