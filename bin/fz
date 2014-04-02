@@ -896,7 +896,7 @@ def build_arg_parser():
             "--cpp",
             action="append_const",
             dest="include_filename_pattern",
-            const=r".*\.cpp$|.*\.cc$|.*\.cxx$|.*\.c\+\+$|.*\.c|.*\.m$|.*\.hpp$|.*\.hh$|.*\.h$|.*\.hxx|.*\.h\+\+|.*\.inc$",
+            const=r".*\.cpp$|.*\.cc$|.*\.cxx$|.*\.c\+\+$|.*\.c$|.*\.m$|.*\.hpp$|.*\.hh$|.*\.h$|.*\.hxx|.*\.h\+\+$|.*\.inc$",
             help="C++ and C)")
     target_type_options.add_argument(
             "--csharp",
