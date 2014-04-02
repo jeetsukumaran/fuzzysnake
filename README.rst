@@ -7,9 +7,9 @@ all the characters of the expression are found in the string in the same order
 as they occur in the expression, but not necessarily consecutively. If you want
 more control over the matching, you can use full-fledged regular expressions
 instead of fuzzy-matching. The single-file pure-Python design constraint
-ensures extreme deployment ease and portability: either use 'pip' to install
-this program or simply copy the application ("`bin/fz`") to anywhere on your
-system PATH and you are good to go!
+ensures extreme deployment ease and portability: simply copy the application
+(which can be found in the "`bin`" subdirectory of the project: "`bin/fz`") to
+anywhere on your system PATH and you are good to go!
 
 Installation
 ------------
