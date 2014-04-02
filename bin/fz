@@ -264,18 +264,18 @@ class Searcher(object):
             self.output.window.nodelay(0)
         return ch
 
-    def _newHeap(self, query, curHeap):
+    def _new_heap(self, query, cur_heap):
         newHeap = []
         ranker = self.ranker(query=query,
                 whitespace_separated_multiquery=self.whitespace_separated_multiquery,
                 match_basename_only=self.match_basename_only,
                 match_type=self.match_type)
-        for w, item in curHeap:
+        for w, item in cur_heap:
             item.match_basename_only = self.match_basename_only # needs to be updated here
             try:
                 score, match_start, match_end = ranker.rank(item)
             except FuzzyRanker.IncompleteRegularExpressionPatternException:
-                return curHeap
+                return cur_heap
             if score:
                 item.score = score
                 item.match_start = match_start
@@ -293,7 +293,7 @@ class Searcher(object):
         current_query = ""
         for ch in old_query:
             current_query += ch
-            current_heaps.append(self._newHeap(current_query, current_heaps[-1]))
+            current_heaps.append(self._new_heap(current_query, current_heaps[-1]))
         return current_heaps
 
     def _select_next(self, current_selected):
@@ -308,7 +308,7 @@ class Searcher(object):
         # index to move *down* the list, which is sorted incrementally by score.
         return min(min(self.output.window_size()[0]-2, max_results), current_selected + 1)
 
-    def _loop(self, current_heaps, N):
+    def _loop(self, current_heaps):
         heapq.heapify(current_heaps[0])
         current_query = ""
         selected = 0
@@ -381,12 +381,12 @@ class Searcher(object):
                 else:
                     try:
                         current_query += chr(next_char)
-                        current_heaps.append(self._newHeap(current_query, current_heaps[-1]))
+                        current_heaps.append(self._new_heap(current_query, current_heaps[-1]))
                     except ValueError:
                         pass
-            self._echo(current_query, current_heaps[-1], selected, N)
+            self._echo(current_query, current_heaps[-1], selected)
 
-    def _echo(self, current_query, heap, selected, N):
+    def _echo(self, current_query, heap, selected):
         self.output.clear()
         self.output.print_query(current_query)
         for i, (score, item) in enumerate(heap):
@@ -396,13 +396,13 @@ class Searcher(object):
                 break
         self.output.flush()
 
-    def run(self, items, rows):
+    def run(self, items):
         self.output.init()
         try:
             heap = [(i.score, i) for i in items]
             heap.sort()
-            self._echo("", heap, 0, N=rows)
-            return self._loop([heap], rows)
+            self._echo("", heap, 0)
+            return self._loop([heap])
         finally:
             self.output.cleanup()
 
@@ -660,7 +660,6 @@ def getDims():
 
 class Runner(object):
     def __init__(self, args):
-        self.rows, self.columns = getDims()
         self.args = args
         self.editor_path = os.environ.get("FUZZYSNAKE_EDITOR", os.environ.get("EDITOR", "vi"))
 
@@ -748,7 +747,7 @@ class DirRun(Runner):
                 match_type=self.args.match_type,
                 )
         try:
-            found = s.run(items, self.rows - 3)
+            found = s.run(items)
         except KeyboardInterrupt:
             sys.exit(0)
 
