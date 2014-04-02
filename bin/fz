@@ -419,13 +419,13 @@ class DirectorySource(object):
             include_filename_patterns=None,
             ignore_directories=True,
             ignore_files=True,
-            ignore_gitignores=True,
+            include_gitignores=False,
             dirs_to_exclude=None,
             files_to_exclude=None,
             paths_to_exclude=None):
         self.ignore_directories = ignore_directories
         self.ignore_files = ignore_files
-        self.ignore_gitignores = ignore_gitignores
+        self.respect_git_ignores = not include_gitignores
         if include_filename_patterns is None:
             self.include_filename_pattern = None
         else:
@@ -447,6 +447,7 @@ class DirectorySource(object):
             dot_dirs_to_ignore = ["(.*/|)\.{}".format(d) for d in dot_dirs_to_ignore]
             dot_dirs_ignore_pattern = "(" + "|".join(dot_dirs_to_ignore) + ")"
             DirectorySource.dot_dirs_ignore_pattern = re.compile(dot_dirs_ignore_pattern)
+        self.filters = []
 
     def recurse_directory_up(self, dirname):
         if os.path.isdir(dirname):
@@ -458,25 +459,27 @@ class DirectorySource(object):
                 dirname = newdir
 
     def find_parent_gis(self, start_dir):
-        gitignore_filters = []
         dirs = self.recurse_directory_up(start_dir)
         for dirname in dirs:
             if dirname == start_dir:
                 continue
             pgi = os.path.join(dirname, '.gitignore')
             if os.path.isfile(pgi):
-                gitignore_filters.append(GitIgnoreFilter(dirname, '.gitignore'))
-        gitignore_filters.reverse()
-        return gitignore_filters
+                self.filters.append(GitIgnoreFilter(dirname, '.gitignore'))
+        self.filters.reverse()
+        return self.filters
 
     def fetch(self, start_dir=".", results=None):
-        gitignore_filters = []
-        all_filters = []
-        if self.ignore_gitignores:
+        if self.respect_git_ignores:
             self.find_parent_gis(start_dir)
         if results is None:
             results = []
         for dirname, dirs, filenames in walk(start_dir):
+            if self.respect_git_ignores and ".git" in dirs:
+                giexclude = os.path.join('.git', 'info', 'exclude')
+                if os.path.isfile(os.path.join(dirname, giexclude)):
+                    gif = GitIgnoreFilter(dirname, giexclude)
+                    self.filters.append((dirname, gif))
             if DirectorySource.dot_dirs_ignore_pattern.match(dirname):
                 continue
             if self.dirs_to_exclude is not None and self.dirs_to_exclude.match(dirname):
@@ -496,18 +499,17 @@ class DirectorySource(object):
                         names.append(f)
             if not self.ignore_directories:
                 names.extend(dirs)
-            if self.ignore_gitignores and '.gitignore' in filenames:
+            if self.respect_git_ignores and '.gitignore' in filenames:
                 gif = GitIgnoreFilter(dirname, '.gitignore')
-                gitignore_filters.append((dirname, gif))
-            all_filters.extend(gitignore_filters)
-            while all_filters:
-                path, filter_obj = all_filters[-1]
+                self.filters.append((dirname, gif))
+            while self.filters: # find filter that applies to current path
+                path, filter_obj = self.filters[-1]
                 if dirname.startswith(path):
                     break
-                all_filters.pop()
+                self.filters.pop()
             fltr = None
-            if all_filters:
-                fltr = all_filters[-1][1]
+            if self.filters:
+                fltr = self.filters[-1][1] # grab filter object of last filter entry
             for name in names:
                 if fltr is None or fltr(name, dirname):
                     entry = Entry(dirname=dirname,
@@ -530,7 +532,9 @@ class GitIgnoreFilter(object):
     last_path_filter = None
 
     globchars = re.compile('[*\[\]?]')
-    def __init__(self, dirname, filename):
+    def __init__(self,
+            dirname,
+            filename):
         self.dirname = dirname
         self.fn = os.path.join(dirname, filename)
         path_filters = []
@@ -694,7 +698,7 @@ class Runner(object):
 class DirRun(Runner):
 
     def find(self):
-        ignore_gitignores = self.args.include_gitignore_files
+        include_gitignores = self.args.include_gitignore_files
         if self.args.directory_search_mode:
             ignore_directories = False
             ignore_files = True
@@ -705,7 +709,7 @@ class DirRun(Runner):
                 include_filename_patterns=args.include_filename_pattern,
                 ignore_directories=ignore_directories,
                 ignore_files=ignore_files,
-                ignore_gitignores=ignore_gitignores,
+                include_gitignores=include_gitignores,
                 dirs_to_exclude=args.dirs_to_exclude,
                 files_to_exclude=args.files_to_exclude)
         search_paths = self.args.paths
@@ -1239,7 +1243,8 @@ def build_arg_parser():
 	    "'-F path1 -F path2 -F path3'.")
     exclude_options_group.add_argument(
             "--include-gitignore-files",
-            action="store_false",
+            action="store_true",
+            default=False,
 	    help="Do not filter out files in '.gitignore' (by default, "
 	    "these are filtered out).")
 
