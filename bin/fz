@@ -716,13 +716,6 @@ class DirRun(Runner):
         else:
             ignore_directories = True
             ignore_files = False
-        ds = DirectorySource(
-                include_filename_patterns=args.include_filename_pattern,
-                ignore_directories=ignore_directories,
-                ignore_files=ignore_files,
-                respect_gitignores=respect_gitignores,
-                dirs_to_exclude=args.dirs_to_exclude,
-                files_to_exclude=args.files_to_exclude)
         search_paths = self.args.paths
         if not search_paths:
             search_paths = ["."]
@@ -753,6 +746,16 @@ class DirRun(Runner):
                         items.append(entry)
                 sys.stdin = open("/dev/tty", "r")
             else:
+                # Create a new sourcer on each pass.
+                # A little inefficient, but avoids cross-application
+                # of .gitignore etc. filters
+                ds = DirectorySource(
+                        include_filename_patterns=args.include_filename_pattern,
+                        ignore_directories=ignore_directories,
+                        ignore_files=ignore_files,
+                        respect_gitignores=respect_gitignores,
+                        dirs_to_exclude=args.dirs_to_exclude,
+                        files_to_exclude=args.files_to_exclude)
                 ds.fetch(path, items)
         if not items:
             sys.stderr.write("No valid files or directories found.\n")
