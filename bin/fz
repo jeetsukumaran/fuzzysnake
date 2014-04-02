@@ -307,7 +307,7 @@ class Searcher(object):
         # Since we display from the bottom up, moving 'up' or 'previous' means
         # moving to a *lower*-scoring result, which requires *incrementing* the
         # index to move *down* the list, which is sorted incrementally by score.
-        return min(min(self.output.window_size()[0]-2, max_results), current_selected + 1)
+        return min(min(self.output.window_size()[0]-2, max_results-1), current_selected + 1)
 
     def _loop(self, current_heaps):
         heapq.heapify(current_heaps[0])
