@@ -8,71 +8,50 @@ as they occur in the expression, but not necessarily consecutively. If you want
 more control over the matching, you can use full-fledged regular expressions
 instead of fuzzy-matching. The single-file pure-Python design constraint
 ensures extreme deployment ease and portability: either use 'pip' to install
-this program or simply copy the application ("`bin/fs`") to anywhere on your
+this program or simply copy the application ("`bin/fz`") to anywhere on your
 system PATH and you are good to go!
-
-This is single-file pure-Python (2.7 and 3.4) file-only modification and
-extension of `quickfind <https://github.com/Refefer/quickfind>`_ (see below).
 
 Installation
 ------------
 
-Install the Script Directly
-...........................
-
 As `fuzzysnake` is a single-file program by design, you can simply grab the
 latest version from its home and save it to somewhere on your system `$PATH`::
 
-    $ sudo curl -ssl3 https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/bin/fs > /usr/local/bin/fs && chmod 0755 !#:3
+    $ sudo curl -ssl3 https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/bin/fz > /usr/local/bin/fz && chmod 0755 !#:3
 
 or, if you do not have systems administration rights (but do have a "`~/bin`"
 directory as this is in your `$PATH`)::
 
-    $ curl -ssl3 https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/bin/fs > ~/bin/fs && chmod 0755 !#:3
+    $ curl -ssl3 https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/bin/fz > ~/bin/fz && chmod 0755 !#:3
 
-Otherwise, if you have already downloaded the archive, you can simply copy the
-file "`fs`" to anywhere on your system executable `$PATH`, as, e.g.::
-
-    $ sudo cp bin/fs /usr/local/bin
-
-or, as a personal installation::
-
-    $ cp bin/fs ~/bin/ # assuming '~/bin' exists and is in $PATH
-
-This is the optimum no-muss-no-fuss approach with maximum portability.
-
-Install from the Python Package Index
-.....................................
-
-Alternatively, install from `PyPI <https://pypi.python.org/pypi>`_ by::
-
-    $ pip install fuzzysnake
-
-Install from Source
-...................
-
-Or to install from source, clone the
-`repository <https://github.com/jeetsukumaran/fuzzysnake>`_.
-and type::
+Otherwise, if you have already downloaded or cloned the project from its
+`repository <https://github.com/jeetsukumaran/fuzzysnake>`_, you can enter the
+project directory and type::
 
     $ python setup.py install
 
-in the directory.
-
-Note that 'sudo' might be needed for the above operations, depending on
+Note that 'sudo' might be needed for the above operation, depending on
 permissions.
 
-To Use
-------
+Of course, you simply copy the file "`fz`" to anywhere on your system
+executable `$PATH`, for e.g.::
 
-After installation, a new executable is added to the path 'fs'.  To use, enter::
+    $ cp bin/fz ~/bin/ # assuming '~/bin' exists and is in $PATH
 
-    $ fs
+or, if you have administrative privileges, as a system-wide installation::
 
+    $ sudo cp bin/fz /usr/local/bin
+
+Basic Usage
+-----------
+
+After installation, a new executable is added to the path 'fz'.  To use, enter::
+
+    $ fz
 
 You can also explicitly pass in directory paths to be searched::
 
-    $ fs ~/projects ~/shared/data
+    $ fz ~/projects ~/shared/data
 
 After invoking `FuzzySnake`, all files found in the current (or the paths
 otherwise specified in the command invocation) will be displayed in a list.
@@ -94,10 +73,10 @@ Once you have found a file that you want, you hit `<ENTER>`.
       selected filepath being written out to the standard output. This allows
       for actions such as::
 
-          $ mv $(fs -p) ~/data
-          $ cp *.txt $(fs -d -p)
+          $ mv $(fz -p) ~/data
+          $ cp *.txt $(fz -d -p)
 
-    * Other actions are available: see 'fs --help' for details.
+    * Other actions are available: see 'fz --help' for details.
 
 `FuzzySnake` can be configured to match against file name and/or path while
 selecting either files, directories, or both. By default, it filters out files
@@ -112,9 +91,9 @@ the standard input pipe. This lets you use a external program, such as `find
 <http://beyondgrep.com/>`_, to make a first pass at file-discovery, and then
 use `FuzzySnake` to dynamically select the final result with precision::
 
-    $ find ~/projects -type f | fs -
-    $ find ~/projects -name '*.py' | fs -
-    $ ack -f | fs -
+    $ find ~/projects -type f | fz -
+    $ find ~/projects -name '*.py' | fz -
+    $ ack -f | fz -
 
 Demonstration
 -------------
@@ -134,25 +113,12 @@ Enhancing Your Shell with FuzzySnake
 - To set `CTRL-F` as a hot-key to invoke FuzzySnake, add the following to your
   "`~/.bashrc`::
 
-    bind '"\C-f": "fs\n"'
+    bind '"\C-f": "fz\n"'
 
 - To have couple the power of `ack` with `FuzzySnake`, add the following to your
   "`~/.bashrc`::
 
-    alias ackfs='ack -f | fs -'
-
-- To enable a new bash command, "`goto`", for quickly changing to a directory,
-  add the following to your "`~/.bashrc`"::
-
-    function goto() {
-        _OFILE=/tmp/fs.$$
-        fs -d -s $_OFILE
-        if [ -f $_OFILE ]; then
-            cd `cat $_OFILE`
-            rm $_OFILE
-        fi
-        unset _OFILE
-    }
+    alias ackfs='ack -f | fz -'
 
 - If you have lots of files with similar names, add the '-w' flag to allow
   multiple searchers. With this flag, multiple queries can be run simulatneous,
@@ -164,29 +130,8 @@ Enhancing Your Shell with FuzzySnake
 Acknowledgements
 ----------------
 
-`FuzzySnake` is based on:
+`FuzzySnake` was inspired by:
 
-    `quickfind <https://github.com/Refefer/quickfind>`_ by Andrew Stanton.
+    `quickfind <https://github.com/Refefer/quickfind>`_
 
-Major differences from `quickfind` are:
-
-    * Pure-Python with no external dependencies (e.g., fsnix [though this will
-      be used if available], python-ctags).
-
-    * Full fuzzy-matching (i.e., "cat" will match not just "catfish"
-      and "alleycat", but also, e.g, "charset" and "applecart", albeit at lower
-      score).
-
-    * Full regular expression matching also supported.
-
-    * Python 3.x compatible.
-
-    * Single-file implementation.
-
-    * Uses "`curses`" for screen-input: more responsive to, e.g. "`ESC`" or
-      "`Ctrl-C`" for cancellation.
-
-    * Does *not* search for tags.
-
-    * If "`fsnix`" is not installed, *much* slower.
-
+by Andrew Stanton.

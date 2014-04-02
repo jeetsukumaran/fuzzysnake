@@ -1,35 +1,45 @@
+# svn crud
+.svn*
+
+# OS X / Darwin
+.DS_Store*
+
+# Latex
+*.aux
+*.bbl
+*.blg
+*.log
+*.nav
+*.out
+*.snm
+*.toc
+*.synctex.gz
+
+# IDE/Editor Project Files
+*.bbprojectd
+*.kpf
+.idea/*
+
+# Python
 *.py[cod]
-
-# C extensions
 *.so
-
-# Packages
 *.egg
-*.egg-info
-dist
-build
+pip-log.txt
+nosetests.xml
+setup.cfg
+*.mo
+.installed.cfg
+.coverage
+.tox
+*.egg-info/*
+dist/*
+build/*
 eggs
 parts
 var
-sdist
+sdist/*
 develop-eggs
-.installed.cfg
 lib
 lib64
 __pycache__
-
-# Installer logs
-pip-log.txt
-
-# Unit test / coverage reports
-.coverage
-.tox
-nosetests.xml
-
-# Translations
-*.mo
-
-# Mr Developer
-.mr.developer.cfg
-.project
-.pydevproject
+setuptools-*.egg

@@ -11,12 +11,13 @@ setup(name="fuzzysnake",
       description="Pure-Python fuzzy find for the terminal",
       url="TBA",
       license="LICENSE",
-      scripts=["bin/fs"],
+      scripts=["bin/fz"],
       author="Jeet Sukumaran",
       author_email="Jeet Sukumaran",
       long_description=read('README.rst'),
       classifiers=[
        "License :: OSI Approved :: Apache Software License",
        "Programming Language :: Python :: 2.7",
+       "Programming Language :: Python :: 3.4",
        "Operating System :: OS Independent"
       ])
