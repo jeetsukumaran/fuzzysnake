@@ -1136,6 +1136,12 @@ def build_arg_parser():
             const=r".*\.pir$|.*\.pasm$|.*\.pmc$|.*\.ops$|.*\.pod$|.*\.pg$|.*\.tg$",
             help="Parrot")
     target_type_options.add_argument(
+            "--pdf",
+            action="append_const",
+            dest="target_filename_pattern",
+            const=r".*\.pdf$",
+            help="Adobe PDF (Portable Document Format) files")
+    target_type_options.add_argument(
             "--perl",
             action="append_const",
             dest="target_filename_pattern",
