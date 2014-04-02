@@ -26,8 +26,12 @@
 ################################################################################
 
 """
-Find, list and select a file for editing, dynamically filtering listings
-using fuzzy-matching or regular expression-matching as you type.
+Find, list and select a file for editing, dynamically filtering listings using
+fuzzy-matching. For more powerful and flexible matching, regular expressions
+can be used. Searches can be restricted to specific file types, such as Python
+or C++/C source code files. A custom editor to use can be specified by setting
+the $FUZZYSNAKE_EDITOR environmental variable, otherwise the editor specifed in
+$EDITOR will be used.
 """
 
 import os
