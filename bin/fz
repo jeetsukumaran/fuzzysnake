@@ -1094,6 +1094,12 @@ def build_arg_parser():
             const=r".*\.php$|.*\.phpt$|.*\.php3$|.*\.php4$|.*\.php5$|.*\.phtml$",
             help="PHP")
     target_type_options.add_argument(
+            "--phylogenetics",
+            action="append_const",
+            dest="include_filename_pattern",
+            const=r".*\.nex$|.*\.nexus$|.*\.nxs$|.*\.mb$|.*\.fas$|.*\.fasta$|.*\.tre$|.*\.trees$|.*\.xml$|.*\.dat$|.*\.nexml$|.*\.phylip$|.*\.aln$",
+            help="TeX")
+    target_type_options.add_argument(
             "--plone",
             action="append_const",
             dest="include_filename_pattern",
@@ -1169,7 +1175,7 @@ def build_arg_parser():
             "--sphinx",
             action="append_const",
             dest="include_filename_pattern",
-            const=r".*\.rst$|.*\.txt$|.*\.inc|conf\.py",
+            const=r".*\.rst$|.*\.inc$|conf\.py",
             help="Sphinx")
     target_type_options.add_argument(
             "--sql",
@@ -1190,10 +1196,10 @@ def build_arg_parser():
             const=r".*\.tex$|.*\.bib$",
             help="TeX")
     target_type_options.add_argument(
-            "--tex-all",
+            "--text",
             action="append_const",
             dest="include_filename_pattern",
-            const=r".*\.tex$|.*\.cls$|.*\.sty$|.*\.bib$",
+            const=r".*\.txt$",
             help="TeX")
     target_type_options.add_argument(
             "--tt",
