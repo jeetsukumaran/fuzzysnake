@@ -59,6 +59,7 @@ if sys.version_info.major >= 3:
     unicode_str = lambda x: str(x)
 else:
     unicode_str = lambda x: unicode(x, errors="ignore")
+import subprocess
 
 __prog__ = os.path.basename(__file__)
 __version__ = "1.0.0"
@@ -727,13 +728,18 @@ class Runner(object):
         raise NotImplementedError()
 
     def run(self):
+        # note: cannot use subprocess here due to parent process (this program) needing to exit before
+        # the subprocess is possibly done. `os.exec` and its kin work: independent process is spawn and
+        # the current process is replaced by it
         filename = self.find()
         if filename is not None:
             if args.action_type == "edit":
                 try:
                     os.execvp(self.editor_path, [self.editor_path, filename])
-                except:
-                    sys.stderr.write("Failed to execute: os.execvp('{}', ['{}', {}])\n".format(self.editor_path, self.editor_path, filename))
+                    # p = subprocess.Popen([self.editor_path, filename])
+                except OSError:
+                    sys.stderr.write("Failed to execute: os.execvp('{}', ['{}', '{}'])\n".format(self.editor_path, self.editor_path, filename))
+                    # sys.stderr.write("Failed to execute subprocess: subprocess.Popen(['{}', '{}'])\n".format(self.editor_path, filename))
                     sys.exit(1)
             elif args.action_type == "print":
                 if not hasattr(args, "action_target") or args.action_target == "-":
@@ -744,15 +750,25 @@ class Runner(object):
                     out.write(filename)
                     out.write("\n")
                 sys.exit(0)
-            elif args.action_type == "print":
-                sys.stdout.write(filename)
-                sys.stdout.write("\n")
-                sys.exit(0)
+            # elif args.action_type == "print":
+            #     sys.stdout.write(filename)
+            #     sys.stdout.write("\n")
+            #     sys.exit(0)
             elif args.action_type == "open":
                 try:
                     os.execvp('open', ['open', filename])
-                except:
-                    sys.stderr.write("Failed to execute: os.execvp('open', ['open', {}])\n".format(filename))
+                    # p = subprocess.Popen(["open", filename])
+                except OSError:
+                    sys.stderr.write("Failed to execute: os.execvp('open', ['open', '{}'])\n".format(filename))
+                    # sys.stderr.write("Failed to execute subprocess: subprocess.Popen(['open', '{}'])\n".format(filename))
+                    sys.exit(1)
+            elif args.action_type == "command":
+                try:
+                    os.execvp(args.action_target, [args.action_target, filename])
+                    # p = subprocess.Popen([args.action_target, filename])
+                except OSError:
+                    sys.stderr.write("Failed to execute: os.execvp('{}', ['{}', '{}'])\n".format(args.action_target, args.action_target, filename))
+                    # sys.stderr.write("Failed to execute subprocess: subprocess.Popen(['{}', '{}'])\n".format(args.action_target, filename))
                     sys.exit(1)
             else:
                 sys.exit("Unrecognized action: '{}'".format(args.action_type))
@@ -1360,7 +1376,13 @@ def build_arg_parser():
             action="store_const",
             dest="action_type",
             const="open",
-            help="Passes selected filepath to 'open' command.")
+            help="Passes the selected file or directory path as an argument to the 'open' command.")
+    action_group.add_argument(
+            "-c", "--execute-command",
+            action=SetCustomCommandAction,
+            dest="action_type",
+            metavar="COMMAND",
+            help="Execute `COMMAND` with the selected file or directory path as an argument.")
     parser.set_defaults(action_type="edit")
 
     return parser.parse_args()
@@ -1372,6 +1394,15 @@ class SetPrintAction(argparse.Action):
             values,
             option_string=None):
         namespace.action_type = "print"
+        namespace.action_target = values
+
+class SetCustomCommandAction(argparse.Action):
+    def __call__(self,
+            parser,
+            namespace,
+            values,
+            option_string=None):
+        namespace.action_type = "command"
         namespace.action_target = values
 
 if __name__ == '__main__':
