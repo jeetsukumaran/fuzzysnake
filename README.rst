@@ -14,7 +14,7 @@ system PATH and you are good to go!
 Installation
 ------------
 
-As `fuzzysnake` is a single-file program by design, you can simply grab the
+As `FuzzySnake` is a single-file program by design, you can simply grab the
 latest version from its home and save it to somewhere on your system `$PATH`::
 
     $ sudo curl -ssl3 https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/bin/fz > /usr/local/bin/fz && chmod 0755 !#:3
@@ -45,43 +45,111 @@ or, if you have administrative privileges, as a system-wide installation::
 Basic Usage
 -----------
 
-After installation, a new executable is added to the path 'fz'.  To use, enter::
+To start using `FuzzySnake`, go to one of your favorite project directories,
+and simply type::
 
     $ fz
 
-You can also explicitly pass in directory paths to be searched::
+Alternatively, you can can explicitly pass in one or more directory paths to be
+searched::
 
     $ fz ~/projects ~/shared/data
 
 After invoking `FuzzySnake`, all files found in the current (or the paths
 otherwise specified in the command invocation) will be displayed in a list.
-You can use the `<UP>` and `<DOWN>` arrow keys (or `<C-N>` and `<C-P>`) to
-select an entry in the list, or you can type in a query to filter the list
-dynamically as you type.  As you start typing characters, the list entries will
-be filtered-out so that only the entries that fuzzily-match the growing
-expression you are typing will be displayed. If you prefer, you can have your
-expression be interpreted as a regular-expression instead of a fuzzy-one by
-specifying the `-e` flag.
+This list can be filtered by typing in characters in a fuzzily-matched query.
+As you start typing characters, the list entries that do not match the growing
+query expression will be filtered out.
 
-Once you have found a file that you want, you hit `<ENTER>`.
+Once you have the list down to manageable size, or whenever you see a file that
+you want, ou can use the `<UP>` and `<DOWN>` arrow keys (or `<CTRL-N>` and
+`<CTRL-P>`) to navigate to and select that entry.
+Then you can hit `<ENTER>` to open it for editing in an editor of your choice,
+as set the environmental variable `$FUZZYSNAKE_EDITOR` (if this is not defined,
+then `$EDITOR` will be used instead).
 
-    * By default, `<ENTER>` opens the selected path for editing using the editor
-      as set the environmental variable `$FUZZYSNAKE_EDITOR` or, if this is not
-      defined, then `$EDITOR`.
+Demonstration
+-------------
 
-    * If "`-p`" is specified then hitting `<ENTER>` will result in the
-      selected filepath being written out to the standard output. This allows
-      for actions such as::
+A demonstration of this program can be found here:
 
-          $ mv $(fz -p) ~/data
-          $ cp *.txt $(fz -d -p)
+    https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
 
-    * Other actions are available: see 'fz --help' for details.
+.. image:: https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
+   :height: 600px
+   :alt: Demonstration of FuzzySnake in action.
+   :target: https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
 
-`FuzzySnake` can be configured to match against file name and/or path while
-selecting either files, directories, or both. By default, it filters out files
-listed in a directory tree's `.gitignore`. It can also match on the entire path
-instead of just the tail or basename of the path, using the `-c` flag.
+
+Customizing the Match Mode
+--------------------------
+If the fuzzy matching is too fuzzy for you, you can use strict literal matching
+by invoking `FuzzySnake` with the '`-l`' or '`--literal`' flag::
+
+    $ fz -l
+
+Alternatively, you can bring the full power of regular expressions to bear by
+using the '`-e`' or '`--regexp`' flag::
+
+    $ fz -e
+
+You can switch matching modes in mid-search while reviewing the results list by
+typing:
+
+    - `<CTRL-F>` for fuzzy-matching mode,
+    - `<CTRL-E>` for regular-expression matching mode, and
+    - `<CTRL-L>` for literal-matching mode.
+
+Matching on the Whole Path or Just the Basename
+-----------------------------------------------
+
+By default, `FuzzySnake` matches the entire path of each filesystem entry,
+i.e., all the components of the parent directory as well as the file basename.
+You can restrict the match to just the tail or basename of the path by invoking
+`FuzzySnake` with the '`-b`' flag. When reviewing or filtering the list, you
+can switch back-and-forth between matching the whole path or just the basename
+by using '<CTRL-B>'.
+
+Restricting Searches by File Type
+---------------------------------
+
+You can restrict the initial list of candidates offered for selection by file
+type. For example, to search for only Python files::
+
+    $ fz --python
+
+Or only C++ files::
+
+    $ fz --cpp
+
+Multiple types of files can be specified simultaneously::
+
+    $ fz --python --sphinx --markdown
+    $ fz --cpp --make --autotools
+    $ fz --cpp --cmake
+
+Excluding Directories and Files
+-------------------------------
+
+Directories or files can be excluded from the initial results by supplying
+matching regular-expression patterns via the '`-D`' and '`-F`' flags,
+respectively::
+
+    $ fz -D '.*build/'
+    $ fz -F '\.*pyc'
+
+Either of these may be optionally specified multiple times to match multiple
+path patterns::
+
+    $ fz -D '.*build/' -D '.*tmp$' -D '.*var' -F '\.*pyc$' -F 'output\d\+.txt'
+
+Note that, by default, `FuzzySnake` inspects any '`.gitignore`' files found and
+automatically applies the rules specified therein to pre-filter out entries.
+So, in most typical projects that have well-formulated '`.gitignore`', various
+build and project cruft files should automatically be filtered out without any
+effort from yourself. If you do *not* want this behavior, and want to actually
+see files ignored by '`.gitignore`' directives, then use the "`-i`" flag to
+request that `FuzzySnake` ignore the '`.gitignore`'.
 
 Stacking With `find`, `ack`, etc.
 ---------------------------------
@@ -95,22 +163,10 @@ use `FuzzySnake` to dynamically select the final result with precision::
     $ find ~/projects -name '*.py' | fz -
     $ ack -f | fz -
 
-Demonstration
--------------
-
-A demonstration of this program in usage can be found here:
-
-    https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
-
-.. image:: https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
-   :height: 600px
-   :alt: Demonstration of FuzzySnake in action.
-   :target: https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
-
 Enhancing Your Shell with FuzzySnake
 ------------------------------------
 
-- To set `CTRL-F` as a hot-key to invoke FuzzySnake, add the following to your
+- To set `<CTRL-F>` as a hot-key to invoke FuzzySnake, add the following to your
   "`~/.bashrc`::
 
     bind '"\C-f": "fz\n"'
@@ -118,7 +174,7 @@ Enhancing Your Shell with FuzzySnake
 - To have couple the power of `ack` with `FuzzySnake`, add the following to your
   "`~/.bashrc`::
 
-    alias ackfs='ack -f | fz -'
+    alias fzack='ack -f | fz -'
 
 - If you have lots of files with similar names, add the '-w' flag to allow
   multiple searchers. With this flag, multiple queries can be run simulatneous,
