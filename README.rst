@@ -6,10 +6,13 @@ fuzzy-matching of patterns as you type them in. A "fuzzy" match is one in which
 all the characters of the expression are found in the string in the same order
 as they occur in the expression, but not necessarily consecutively. If you want
 more control over the matching, you can use full-fledged regular expressions
-instead of fuzzy-matching. The single-file pure-Python design constraint
-ensures extreme deployment ease and portability: simply copy the application
-(which can be found in the "`bin`" subdirectory of the project: "`bin/fz`") to
-anywhere on your system PATH and you are good to go!
+instead of fuzzy-matching. Searches can also be restricted to specific types of
+files, such as C++/C files, Python files, Java files, and so on.
+
+The single-file pure-Python design constraint ensures extreme deployment ease
+and portability: simply copy the application (which can be found in the "`bin`"
+subdirectory of the project: "`bin/fz`") to anywhere on your system PATH and
+you are good to go!
 
 You can see a demonstration of the basic usage of this program here:
 
