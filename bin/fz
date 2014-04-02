@@ -212,8 +212,9 @@ class CursesPrinter(object):
         self.window.refresh()
 
     def window_size(self):
-        # return self.window.getmaxyx() # not as responsive to resizing?
-        return getDims()
+        # return self.window.getmaxyx() # not as responsive to resizing
+        # return curses.LINES, curses.COLS # not as responsive to resizing
+        return get_screen_dimensions()
 
 class Searcher(object):
 
@@ -644,7 +645,7 @@ class FuzzyRanker(object):
         # return agg_score + self.weight_f(item), match_start, match_end
         return agg_score, match_start, match_end
 
-def getDims():
+def get_screen_dimensions():
     env = os.environ
     def ioctl_GWINSZ(fd):
         try:
@@ -652,7 +653,6 @@ def getDims():
         except:
             return
         return cr
-
     return ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2) or (25, 80)
 
 ##############################################################################
