@@ -59,6 +59,7 @@ if sys.version_info.major >= 3:
     unicode_str = lambda x: str(x)
 else:
     unicode_str = lambda x: unicode(x, errors="ignore")
+import difflib
 
 __prog__ = os.path.basename(__file__)
 __version__ = "1.0.0"
@@ -623,8 +624,10 @@ class FuzzyRanker(object):
         if match is None:
             result = 0
         else:
-            # return 100 / ((1+match.start()) * (match.end()-match.start()+1))
-            result = 1000.0 / ((1 + match.start()) * (match.end() - match.start() + 1))
+            # result = 100.0 / ((1+match.start()) * (match.end()-match.start()+1))
+            result = ((1 + match.start()) * (match.end() - match.start() + 1)) / 1000.0
+            # if match_type == "fuzzy":
+            #     result = (1 + difflib.SequenceMatcher(None, s, query).ratio()) * result
         return match, result
     match_and_score = staticmethod(match_and_score)
 
