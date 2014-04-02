@@ -448,6 +448,7 @@ class DirectorySource(object):
             dot_dirs_ignore_pattern = "(" + "|".join(dot_dirs_to_ignore) + ")"
             DirectorySource.dot_dirs_ignore_pattern = re.compile(dot_dirs_ignore_pattern)
         self.filters = []
+        self.global_filters = []
 
     def recurse_directory_up(self, dirname):
         if os.path.isdir(dirname):
@@ -478,8 +479,8 @@ class DirectorySource(object):
             if self.respect_git_ignores and ".git" in dirs:
                 giexclude = os.path.join('.git', 'info', 'exclude')
                 if os.path.isfile(os.path.join(dirname, giexclude)):
-                    gif = GitIgnoreFilter(dirname, giexclude)
-                    self.filters.append((dirname, gif))
+                    gief = GitIgnoreFilter(dirname, giexclude)
+                    self.global_filters.append(gief)
             if DirectorySource.dot_dirs_ignore_pattern.match(dirname):
                 continue
             if self.dirs_to_exclude is not None and self.dirs_to_exclude.match(dirname):
@@ -500,7 +501,7 @@ class DirectorySource(object):
             if not self.ignore_directories:
                 names.extend(dirs)
             if self.respect_git_ignores and '.gitignore' in filenames:
-                gif = GitIgnoreFilter(dirname, '.gitignore')
+                gif = GitIgnoreFilter(dirname, '.gitignore', self.global_filters)
                 self.filters.append((dirname, gif))
             while self.filters: # find filter that applies to current path
                 path, filter_obj = self.filters[-1]
@@ -534,7 +535,8 @@ class GitIgnoreFilter(object):
     globchars = re.compile('[*\[\]?]')
     def __init__(self,
             dirname,
-            filename):
+            filename,
+            inherited_filters=None):
         self.dirname = dirname
         self.fn = os.path.join(dirname, filename)
         path_filters = []
@@ -558,6 +560,15 @@ class GitIgnoreFilter(object):
             self.glob_filters = []
         self.exact_filters = exact_filters
         self.path_filters = self.setup_path_filters(path_filters)
+        if inherited_filters is not None:
+            for f in inherited_filters:
+                self.glob_filters.extend(f.glob_filters)
+                self.exact_filters.update(f.exact_filters)
+                for k in f.path_filters:
+                    try:
+                        self.path_filters[k].extend(f.path_filters[k])
+                    except KeyError:
+                        self.path_filters[k] = list(f.path_filters[k])
 
     def setup_path_filters(self, path_filters):
         dirmaps = {}
