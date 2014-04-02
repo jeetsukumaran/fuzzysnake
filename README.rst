@@ -11,6 +11,15 @@ ensures extreme deployment ease and portability: simply copy the application
 (which can be found in the "`bin`" subdirectory of the project: "`bin/fz`") to
 anywhere on your system PATH and you are good to go!
 
+You can see a demonstration of the basic usage of this program here:
+
+    https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
+
+.. image:: https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
+   :height: 600px
+   :alt: Demonstration of FuzzySnake in action.
+   :target: https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
+
 Installation
 ------------
 
@@ -67,19 +76,6 @@ you want, ou can use the `<UP>` and `<DOWN>` arrow keys (or `<CTRL-N>` and
 Then you can hit `<ENTER>` to open it for editing in an editor of your choice,
 as set the environmental variable `$FUZZYSNAKE_EDITOR` (if this is not defined,
 then `$EDITOR` will be used instead).
-
-Demonstration
--------------
-
-A demonstration of this program can be found here:
-
-    https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
-
-.. image:: https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
-   :height: 600px
-   :alt: Demonstration of FuzzySnake in action.
-   :target: https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
-
 
 Customizing the Match Mode
 --------------------------
@@ -198,7 +194,7 @@ source the file.
 
 These enhancements include:
 
-- Setting `<CTRL-F>` as a hot-key to invoke FuzzySnake::
+- Setting `<CTRL-F>` as a shell hot-key to invoke FuzzySnake::
 
     bind '"\C-f": "fz\n"'
 
