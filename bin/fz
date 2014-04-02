@@ -1347,13 +1347,14 @@ def build_arg_parser():
             "-a", "--include-hidden",
             action="store_true",
             default=False,
-            help="Include hidden files and directories (excluded by default).")
+            help="Do not filter out hidden files and directories "
+            "(by default, these are filtered out).")
     exclude_options_group.add_argument(
             "--include-gitignores",
             action="store_true",
             default=False,
-            help="Do not filter out files in '.gitignore' (by default, "
-            "these are filtered out).")
+            help="Do not filter out paths specified in '.gitignore' "
+            "(by default, these are filtered out).")
 
     action_group_section = parser.add_argument_group("Action Options")
     action_group = action_group_section.add_mutually_exclusive_group()

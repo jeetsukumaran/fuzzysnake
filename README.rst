@@ -80,6 +80,30 @@ Then you can hit `<ENTER>` to open it for editing in an editor of your choice,
 as set the environmental variable `$FUZZYSNAKE_EDITOR` (if this is not defined,
 then `$EDITOR` will be used instead).
 
+Instead of editing the selected file (or directory, if the
+'`-d`'/'`--directory-paths`' option is used) in your favorite text editor, you
+can open it in the system default application for files of that type by
+invoking `FuzzySnake` with the '`-o`' option::
+
+    $ fz -o
+
+Alternatively, you can use the '`-c`' flag following by a command to have a
+custom command executed on the selected path::
+
+    $ fz -c 'wc'
+    $ fz -c 'rm' # use with caution
+
+Currently, this mechanism is not very sophisticated: only single-token commands
+are supported, and it is difficult to pass supplemental options to the command.
+In the future, this facility will be extended to support more complex commands,
+much in the way of, e.g., '`exec`'.
+
+You can also use the '`-p`'/'`--print`' flag to have `FuzzySnake` write out the
+name of the selected path to a specified file. This is typically used when
+using `FuzzySnake` as part of a custom shell function or command, such as the
+"fuzzily-change-directory" command described below and given in the example
+'`fztricks.sh`" file.
+
 Customizing the Match Mode
 --------------------------
 If the fuzzy matching is too fuzzy for you, you can use strict literal matching
