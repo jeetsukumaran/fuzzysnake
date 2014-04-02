@@ -442,7 +442,7 @@ class DirectorySource(object):
             respect_gitignores=True,
             dirs_to_exclude=None,
             files_to_exclude=None,
-            paths_to_exclude=None):
+            max_recursion_depth=None):
         self.ignore_directories = ignore_directories
         self.ignore_files = ignore_files
         self.respect_gitignores = respect_gitignores
@@ -458,15 +458,12 @@ class DirectorySource(object):
             self.files_to_exclude = None
         else:
             self.files_to_exclude = re.compile("(" + "|".join(files_to_exclude) + ")")
-        if paths_to_exclude is None:
-            self.paths_to_exclude = None
-        else:
-            self.paths_to_exclude = re.compile("(" + "|".join(paths_to_exclude) + ")")
         if DirectorySource.dot_dirs_ignore_pattern is None:
             dot_dirs_to_ignore = ["git", "svn", "hg"]
             dot_dirs_to_ignore = ["(.*/|)\.{}".format(d) for d in dot_dirs_to_ignore]
             dot_dirs_ignore_pattern = "(" + "|".join(dot_dirs_to_ignore) + ")"
             DirectorySource.dot_dirs_ignore_pattern = re.compile(dot_dirs_ignore_pattern)
+        self.max_recursion_depth = max_recursion_depth
         self.filters = []
         self.git_exclude_filters = []
 
@@ -491,11 +488,19 @@ class DirectorySource(object):
         return self.filters
 
     def fetch(self, start_dir=".", results=None):
+        self.filters = []
+        self.git_exclude_filters = []
         if self.respect_gitignores:
             self.find_parent_gis(start_dir)
         if results is None:
             results = []
         for dirname, dirs, filenames in walk(start_dir):
+            if self.max_recursion_depth is not None:
+                recursion_level = dirname.count(os.path.sep)
+                if recursion_level == self.max_recursion_depth:
+                    del dirs[:]
+                elif recursion_level > self.max_recursion_depth:
+                    continue
             if self.respect_gitignores and ".git" in dirs:
                 giexclude = os.path.join('.git', 'info', 'exclude')
                 if os.path.isfile(os.path.join(dirname, giexclude)):
@@ -788,7 +793,8 @@ class DirRun(Runner):
                         ignore_files=ignore_files,
                         respect_gitignores=respect_gitignores,
                         dirs_to_exclude=args.dirs_to_exclude,
-                        files_to_exclude=args.files_to_exclude)
+                        files_to_exclude=args.files_to_exclude,
+                        max_recursion_depth=args.max_recursion_depth)
                 ds.fetch(path, items)
         if not items:
             sys.stderr.write("No valid files or directories found.\n")
@@ -843,6 +849,13 @@ def build_arg_parser():
             help="Restrict match to the basename or tail of the path only "
             "(by default, entire path will be matched). Use `<CTRL-B>` to "
             "toggle this option on and off during the search.")
+    query_options_section.add_argument(
+            "-r", "--recursion-limit", "--max-depth",
+            dest="max_recursion_depth",
+            type=int,
+            help="Maximum depth of sub-directories to recursively search. "
+            "If not specified, recursion depth is unlimited. If 0, then "
+            "only the top-level directory is searched.")
 
     match_type_section = parser.add_argument_group("Match Mode Options")
     match_type_group = match_type_section.add_mutually_exclusive_group()
