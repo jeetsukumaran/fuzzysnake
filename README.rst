@@ -148,8 +148,9 @@ automatically applies the rules specified therein to pre-filter out entries.
 So, in most typical projects that have well-formulated '`.gitignore`', various
 build and project cruft files should automatically be filtered out without any
 effort from yourself. If you do *not* want this behavior, and want to actually
-see files ignored by '`.gitignore`' directives, then use the "`-i`" flag to
-request that `FuzzySnake` ignore the '`.gitignore`'.
+see files ignored by '`.gitignore`' directives, then use the
+"`--include-gitignore-files`" flag to request that `FuzzySnake` ignore the
+'`.gitignore`'.
 
 Stacking With `find`, `ack`, etc.
 ---------------------------------
