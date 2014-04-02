@@ -33,12 +33,12 @@ project directory and type::
 Note that 'sudo' might be needed for the above operation, depending on
 permissions.
 
-Of course, you simply copy the file "`fz`" to anywhere on your system
-executable `$PATH`, for e.g.::
+Of course, you can also simply copy the file "`fz`" to anywhere on your system
+executable `$PATH`, for a personal installation::
 
     $ cp bin/fz ~/bin/ # assuming '~/bin' exists and is in $PATH
 
-or, if you have administrative privileges, as a system-wide installation::
+Or, if you have administrative privileges, as a system-wide installation::
 
     $ sudo cp bin/fz /usr/local/bin
 
