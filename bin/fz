@@ -212,8 +212,14 @@ class CursesPrinter(object):
         curses.echo()
         curses.endwin()
 
-    def print_query(self, query):
-        q = "$ " + query
+    def print_query(self, query, match_type):
+        if match_type == "fuzzy":
+            prompt = "# "
+        elif match_type == "literal":
+            prompt = "| "
+        elif match_type == "regexp":
+            prompt = "$ "
+        q = prompt + query
         self.querylen = len(q)
         height, width = self.window_size()
         self.window.addstr(height-1, 0, q)
@@ -432,7 +438,7 @@ class Searcher(object):
 
     def _echo(self, current_query, heap, selected):
         self.output.clear()
-        self.output.print_query(current_query)
+        self.output.print_query(current_query, self.match_type)
         for i, (score, item) in enumerate(heap):
             try:
                 self.output.print_item(i, item, i==selected, current_query)
