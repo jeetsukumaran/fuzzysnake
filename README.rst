@@ -265,6 +265,29 @@ using `FuzzySnake` as part of a custom shell function or command, such as the
 "fuzzily-change-directory" command described below and given in the example
 '`fztricks.sh`" file.
 
+Listing All the Found File and Directory Names
+----------------------------------------------
+Instead of entering a dynamic fuzzy (or some other type of) matching session,
+if you invoke `FuzzySnake` with a '`-L`'/'`--list`' flag, the names of all the
+files or directories found will be printed to the standard output. This allows
+you to leverage the file-finding abilities of `FuzzySnake` to generate a list
+of names that you can pass to other programs as arguments. The advantage over
+'`find`' is the pre-filtering that `FuzzySnake` does by default, ignoring
+hidden files and directories, version control directories, as well as files
+ignored by Git as specified by directives in various '`.gitignore`' and
+'`.git/info/exclude`' files::
+
+    $ vim $(fz -L)
+
+Even more useful is leveraging the file-type specific filtering power of
+`FuzzySnake` to quickly open a set of files for editing::
+
+    $ vim $(fz -L --python)
+    $ vim $(fz -L --python --sphinx)
+    $ vim $(fz -L --cpp)
+    $ vim $(fz -L --cpp --cmake)
+    $ vim $(fz -L --tex --text)
+
 Stacking With `find`, `ack`, etc.
 ---------------------------------
 If you invoke `FuzzySnake` with '-' as an argument, it will read entries from

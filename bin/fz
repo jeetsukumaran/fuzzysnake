@@ -137,6 +137,16 @@ def execute_command(cmd,
         sys.stderr.write("Failed to execute command with tokens: {}\n".format(cmd))
         sys.exit(1)
 
+def get_screen_dimensions():
+    env = os.environ
+    def ioctl_GWINSZ(fd):
+        try:
+            cr = struct.unpack('hh', fcntl.ioctl(fd, termios.TIOCGWINSZ, '1234'))
+        except:
+            return
+        return cr
+    return ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2) or (25, 80)
+
 class Entry(object):
 
     def __init__(self,
@@ -738,19 +748,6 @@ class FuzzyRanker(object):
         # return agg_score + self.weight_f(item), match_start, match_end
         return agg_score, match_start, match_end
 
-def get_screen_dimensions():
-    env = os.environ
-    def ioctl_GWINSZ(fd):
-        try:
-            cr = struct.unpack('hh', fcntl.ioctl(fd, termios.TIOCGWINSZ, '1234'))
-        except:
-            return
-        return cr
-    return ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2) or (25, 80)
-
-##############################################################################
-## Main Code
-
 class Runner(object):
     def __init__(self, args):
         self.args = args
@@ -782,7 +779,9 @@ class Runner(object):
 
 class DirRun(Runner):
 
-    def find(self):
+    def fetch(self, items=None):
+        if items is None:
+            items = []
         respect_gitignores = not self.args.include_gitignores
         if self.args.directory_search_mode:
             ignore_directories = False
@@ -793,7 +792,6 @@ class DirRun(Runner):
         search_paths = self.args.paths
         if not search_paths:
             search_paths = ["."]
-        items = []
         for path in search_paths:
             if path == "-":
                 if sys.platform.startswith('win'):
@@ -833,6 +831,10 @@ class DirRun(Runner):
                         files_to_exclude=args.files_to_exclude,
                         max_recursion_depth=args.max_recursion_depth)
                 ds.fetch(path, items)
+        return items
+
+    def find(self):
+        items = self.fetch()
         if not items:
             sys.stderr.write("No valid files or directories found.\n")
             sys.exit(0)
@@ -847,10 +849,21 @@ class DirRun(Runner):
             found = s.run(items)
         except KeyboardInterrupt:
             sys.exit(0)
-
         if found is not None:
             found = os.path.join(found.dirname, found.filename)
         return found
+
+    def print_list(self,
+            out=None,
+            mirror_to_stderr=False):
+        if out is None:
+            out = sys.stdout
+        items = self.fetch()
+        for item in items:
+            item_str = "{}\n".format(item.filepath)
+            out.write(item_str)
+            if mirror_to_stderr:
+                sys.stderr.write(item_str)
 
 def build_arg_parser():
     parser = argparse.ArgumentParser(description=__description__)
@@ -1413,6 +1426,15 @@ def build_arg_parser():
             "selected file or directory path name. If this token is not found in the COMMAND "
             "string, then the execution string will be COMMAND as-is followed by the selected "
             "file or directory path name.")
+    action_group.add_argument(
+            "-L", "--list-and-exit",
+            action="store_const",
+            dest="action_type",
+            const="list-and-exit",
+            help="[SPECIAL] Instead of listing the names of files and directories found for "
+            "you to select a particular one, print the names to standard output. This option "
+            "allows you to do, e.g., 'vim $(fz --python src/)' to quickly open all the Python "
+            "files in the 'src/' subdirectory)")
     parser.set_defaults(action_type="edit")
 
     return parser.parse_args()
@@ -1438,4 +1460,7 @@ class SetCustomCommandAction(argparse.Action):
 if __name__ == '__main__':
     args = build_arg_parser()
     runner = DirRun(args)
-    runner.run()
+    if args.action_type == "list-and-exit":
+        runner.print_list()
+    else:
+        runner.run()
