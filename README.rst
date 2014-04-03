@@ -82,8 +82,8 @@ then `$EDITOR` will be used instead).
 
 Instead of opening the selected path in an editor, you can also execute a
 custom command on it using the '`-c`'/'`--execute-command`' option, or open the
-path in the system default application using the '`o`'/'`--open`' option. These
-are discussed in more detail below.
+path in the type-specific system default application using the '`o`'/'`--open`'
+option. These are discussed in more detail below.
 
 Customizing the Match Mode
 --------------------------
@@ -132,61 +132,6 @@ Multiple types of files can be specified simultaneously::
     $ fz --cpp --make --autotools
     $ fz --cpp --cmake
 
-Excluding Directories and Files
--------------------------------
-
-Directories or files can be excluded from the initial results by supplying
-matching regular-expression patterns via the '`-D`' and '`-F`' flags,
-respectively::
-
-    $ fz -D '.*build/'
-    $ fz -F '\.*pyc'
-
-Either of these may be optionally specified multiple times to match multiple
-path patterns::
-
-    $ fz -D '.*build/' -D '.*tmp$' -D '.*var' -F '\.*pyc$' -F 'output\d\+.txt'
-
-Note that, by default, `FuzzySnake` inspects any '`.gitignore`' files found and
-automatically applies the rules specified therein to pre-filter out entries.
-So, in most typical projects that have well-formulated '`.gitignore`', various
-build and project cruft files should automatically be filtered out without any
-effort from yourself. If you do *not* want this behavior, and want to actually
-see files ignored by '`.gitignore`' directives, then use the
-"`--include-gitignore-files`" flag to request that `FuzzySnake` ignore the
-'`.gitignore`'.
-
-Stacking With `find`, `ack`, etc.
----------------------------------
-If you invoke `FuzzySnake` with '-' as an argument, it will read entries from
-the standard input pipe. This lets you use an external program (such as `find
-<http://linux.about.com/od/commands/l/blcmdl1_find.htm>`_, `ack
-<http://beyondgrep.com/>`_, or `The Silver Searcher
-<https://github.com/ggreer/the_silver_searcher>`_) to make a first pass at
-file-discovery, and then use `FuzzySnake` to dynamically select the final
-result with precision::
-
-    $ find ~/projects -type f | fz -
-    $ find ~/projects -name '*.py' | fz -
-    $ ack -f | fz -
-    $ ag -f | fz -
-
-If you want to permanently couple the speed of these file discovery engines
-with the dynamic interactivity of `FuzzySnake`, add the following to your
-"`~/.bashrc`::
-
-    alias fzfind='find . -type f | fz -'
-    alias fzack='ack -f | fz -'
-    alias fzag='ag -f | fz -'
-
-Simultaneous Multiple Queries
------------------------------
-Using the '`-m`' flag, multiple queries can be run simultaneously,
-with whitespace separating query terms: a query for "hello world" would
-result in two filters: "hello" and "world", requiring a file to match both.
-This can be useful for specifying part of a filename and then the file
-extension.
-
 Executing Custom Commands on the Selected File or Directory
 -----------------------------------------------------------
 Instead of editing the selected file (or directory, if the
@@ -220,6 +165,74 @@ using `FuzzySnake` as part of a custom shell function or command, such as the
 "fuzzily-change-directory" command described below and given in the example
 '`fztricks.sh`" file.
 
+Excluding Directories and Files
+-------------------------------
+
+Directories or files can be excluded from the initial results by supplying
+matching regular-expression patterns via the '`-D`' and '`-F`' flags,
+respectively::
+
+    $ fz -D '.*build/'
+    $ fz -F '\.*pyc'
+
+Either of these may be optionally specified multiple times to match multiple
+path patterns::
+
+    $ fz -D '.*build/' -D '.*tmp$' -D '.*var' -F '\.*pyc$' -F 'output\d\+.txt'
+
+Including Hidden Files and Directories
+--------------------------------------
+By default, `FuzzySnake` ignores hidden files and directories. To include
+these, you need to invoke `FuzzySnake` with the '`-a`'/'`--include-hidden`'
+option::
+
+    $ fz -a
+
+Note that version control directories ('`.git`', '`.hg`', '`.svn`', etc.) are
+*always* excluded from all `FuzzySnake` searches.
+
+Including Files and Directories Ignored by Git
+----------------------------------------------
+By default, `FuzzySnake` inspects any '`.gitignore`' and '`.git/info/exclude`'
+files found and automatically applies the rules specified therein to pre-filter
+out entries.  So, in most typical projects that have well-formulated
+'`.gitignore`' or '`.git/info/exclude`, various build and project cruft files
+should automatically be filtered out without any effort from yourself. If you
+do *not* want this behavior, and want to actually see files ignored by
+directives specified in the project's '`.gitignore`' or '`.git/info/exclude`'
+files, then use the '`--include-gitignores`' flag to request that
+`FuzzySnake` ignore these directives.
+
+Simultaneous Multiple Queries
+-----------------------------
+Using the '`-m`' flag, multiple queries can be run simultaneously,
+with whitespace separating query terms: a query for "hello world" would
+result in two filters: "hello" and "world", requiring a file to match both.
+This can be useful for specifying part of a filename and then the file
+extension.
+
+Stacking With `find`, `ack`, etc.
+---------------------------------
+If you invoke `FuzzySnake` with '-' as an argument, it will read entries from
+the standard input pipe. This lets you use an external program (such as `find
+<http://linux.about.com/od/commands/l/blcmdl1_find.htm>`_, `ack
+<http://beyondgrep.com/>`_, or `The Silver Searcher
+<https://github.com/ggreer/the_silver_searcher>`_) to make a first pass at
+file-discovery, and then use `FuzzySnake` to dynamically select the final
+result with precision::
+
+    $ find ~/projects -type f | fz -
+    $ find ~/projects -name '*.py' | fz -
+    $ ack -f | fz -
+    $ ag -f | fz -
+
+If you want to permanently couple the speed of these file discovery engines
+with the dynamic interactivity of `FuzzySnake`, add the following to your
+"`~/.bashrc`::
+
+    alias fzfind='find . -type f | fz -'
+    alias fzack='ack -f | fz -'
+    alias fzag='ag -f | fz -'
 
 Enhancing Your Shell with FuzzySnake
 ------------------------------------
