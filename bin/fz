@@ -670,9 +670,16 @@ class GitIgnoreFilter(object):
             return False
         # Check global globs
         for f in self.glob_filters:
-            if fnmatch.fnmatch(os.path.join(dirname, fn), f):
+            # yes, this block is ugly and horribly inefficient
+            # better approach needed, probably by using reg-ex
+            full_path = os.path.join(dirname, fn)
+            if fnmatch.fnmatch(full_path, f):
                 return False
             if fnmatch.fnmatch(fn, f):
+                return False
+            if fnmatch.fnmatch(os.path.normpath(full_path), f):
+                return False
+            if fnmatch.fnmatch(os.path.normpath(fn), f):
                 return False
         lpf = self.path_filters.get(dirname)
         # check path dependent globs
