@@ -80,29 +80,10 @@ Then you can hit `<ENTER>` to open it for editing in an editor of your choice,
 as set the environmental variable `$FUZZYSNAKE_EDITOR` (if this is not defined,
 then `$EDITOR` will be used instead).
 
-Instead of editing the selected file (or directory, if the
-'`-d`'/'`--directory-paths`' option is used) in your favorite text editor, you
-can open it in the system default application for files of that type by
-invoking `FuzzySnake` with the '`-o`' option::
-
-    $ fz -o
-
-Alternatively, you can use the '`-c`' flag following by a command to have a
-custom command executed on the selected path::
-
-    $ fz -c 'wc'
-    $ fz -c 'rm' # use with caution
-
-Currently, this mechanism is not very sophisticated: only single-token commands
-are supported, and it is difficult to pass supplemental options to the command.
-In the future, this facility will be extended to support more complex commands,
-much in the way of, e.g., '`exec`'.
-
-You can also use the '`-p`'/'`--print`' flag to have `FuzzySnake` write out the
-name of the selected path to a specified file. This is typically used when
-using `FuzzySnake` as part of a custom shell function or command, such as the
-"fuzzily-change-directory" command described below and given in the example
-'`fztricks.sh`" file.
+Instead of opening the selected path in an editor, you can also execute a
+custom command on it using the '`-c`'/'`--execute-command`' option, or open the
+path in the system default application using the '`o`'/'`--open`' option. These
+are discussed in more detail below.
 
 Customizing the Match Mode
 --------------------------
@@ -205,6 +186,40 @@ with whitespace separating query terms: a query for "hello world" would
 result in two filters: "hello" and "world", requiring a file to match both.
 This can be useful for specifying part of a filename and then the file
 extension.
+
+Executing Custom Commands on the Selected File or Directory
+-----------------------------------------------------------
+Instead of editing the selected file (or directory, if the
+'`-d`'/'`--directory-paths`' option is used) in your favorite text editor, you
+can choose to have a custom command to be executed on it by passing the
+'`-c`'/'`--execute-command`' option to `FuzzySnake`::
+
+    $ fz -c 'wc -l'
+    $ fz -c 'git add'
+    $ fz -c 'python'
+    $ fz -c 'open -a "Preview"'
+
+More complex command compositions can be achieved by using the token '`{}`' as
+placeholders in the value you pass to the '`-c`'/'`--execute-command`' option.
+When the actual command is composed to be executed, the '`{}`' tokens will be
+replaced with the name of the file or directory that you have selected::
+
+    $ fz -c 'mv {} ~/some/other/path'
+    $ fz -c 'cp {} {}.bak'
+    $ fz -c 'python {} > output.txt'
+
+Alternatively, if you just want to open the selected path using the system
+default application for the type of path, you can invoke `FuzzySnake` with the
+'`-o`' option::
+
+    $ fz -o
+
+You can also use the '`-p`'/'`--print`' flag to have `FuzzySnake` write out the
+name of the selected path to a specified file. This is typically used when
+using `FuzzySnake` as part of a custom shell function or command, such as the
+"fuzzily-change-directory" command described below and given in the example
+'`fztricks.sh`" file.
+
 
 Enhancing Your Shell with FuzzySnake
 ------------------------------------
