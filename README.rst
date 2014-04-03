@@ -1,6 +1,6 @@
 FuzzySnake
 ==========
-A utility to list, filter, and open files for editing from your shell, using
+A utility to find, list, filter, and act on files from your shell, using
 dynamic fuzzy-matching of patterns as you type them in.
 
 .. image:: https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
