@@ -9,6 +9,7 @@ dynamic fuzzy-matching of patterns as you type them in.
    :target: https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
 
 .. contents::
+    :local:
 
 Introduction
 ------------
