@@ -165,24 +165,24 @@ using `FuzzySnake` as part of a custom shell function or command, such as the
 "fuzzily-change-directory" command described below and given in the example
 '`fztricks.sh`" file.
 
-Excluding Directories and Files
+Excluding Files and Directories
 -------------------------------
 
-Directories or files can be excluded from the initial results by supplying
-matching regular-expression patterns via the '`-D`' and '`-F`' flags,
+Directories and files can be excluded from the initial results by supplying
+matching regular-expression patterns via the '`-F`' and '`-D`' flags,
 respectively::
 
-    $ fz -D '.*build/'
     $ fz -F '\.*pyc'
+    $ fz -D '.*build/'
 
 Either of these may be optionally specified multiple times to match multiple
 path patterns::
 
     $ fz -D '.*build/' -D '.*tmp$' -D '.*var' -F '\.*pyc$' -F 'output\d\+.txt'
 
-Including Hidden Directories and Files
+Including Hidden Files and Directories
 --------------------------------------
-By default, `FuzzySnake` ignores hidden directories and files. To include
+By default, `FuzzySnake` ignores hidden files and directories. To include
 these, you need to invoke `FuzzySnake` with the '`-a`'/'`--include-hidden`'
 option::
 
@@ -191,14 +191,14 @@ option::
 Note that version control directories ('`.git`', '`.hg`', '`.svn`', etc.) are
 *always* excluded from all `FuzzySnake` searches.
 
-Including Directories and Files Ignored by Git
+Including Files and Directories Ignored by Git
 ----------------------------------------------
 By default, `FuzzySnake` inspects any '`.gitignore`' and '`.git/info/exclude`'
 files found and automatically applies the rules specified therein to pre-filter
 out entries.  So, in most typical projects that have well-formulated
-'`.gitignore`' or '`.git/info/exclude`, various build and project cruft files
+'`.gitignore`' or '`.git/info/exclude`, various build and project cruft paths
 should automatically be filtered out without any effort from yourself. If you
-do *not* want this behavior, and want to actually see files ignored by
+do *not* want this behavior, and want to actually see paths ignored by
 directives specified in the project's '`.gitignore`' or '`.git/info/exclude`'
 files, then use the '`--include-gitignores`' flag to request that
 `FuzzySnake` ignore these directives.
