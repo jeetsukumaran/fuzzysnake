@@ -265,8 +265,8 @@ using `FuzzySnake` as part of a custom shell function or command, such as the
 "fuzzily-change-directory" command described below and given in the example
 '`fztricks.sh`" file.
 
-Listing All the Found File and Directory Names
-----------------------------------------------
+Opening All the Files and Directories Found
+-------------------------------------------
 Instead of entering a dynamic fuzzy (or some other type of) matching session,
 if you invoke `FuzzySnake` with a '`-L`'/'`--list`' flag, the names of all the
 files or directories found will be printed to the standard output. This allows
