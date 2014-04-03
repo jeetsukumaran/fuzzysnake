@@ -180,9 +180,9 @@ path patterns::
 
     $ fz -D '.*build/' -D '.*tmp$' -D '.*var' -F '\.*pyc$' -F 'output\d\+.txt'
 
-Including Hidden Files and Directories
+Including Hidden Directories and Files
 --------------------------------------
-By default, `FuzzySnake` ignores hidden files and directories. To include
+By default, `FuzzySnake` ignores hidden directories and files. To include
 these, you need to invoke `FuzzySnake` with the '`-a`'/'`--include-hidden`'
 option::
 
@@ -191,7 +191,7 @@ option::
 Note that version control directories ('`.git`', '`.hg`', '`.svn`', etc.) are
 *always* excluded from all `FuzzySnake` searches.
 
-Including Files and Directories Ignored by Git
+Including Directories and Files Ignored by Git
 ----------------------------------------------
 By default, `FuzzySnake` inspects any '`.gitignore`' and '`.git/info/exclude`'
 files found and automatically applies the rules specified therein to pre-filter
