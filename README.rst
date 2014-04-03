@@ -1,18 +1,26 @@
 FuzzySnake
 ==========
+A utility to list, filter, and open files for editing from your shell, using
+dynamic fuzzy-matching of patterns as you type them in.
+
+.. image:: https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
+   :height: 600px
+   :alt: Demonstration of FuzzySnake in action.
+   :target: https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
 
 .. contents::
 
 Introduction
 ------------
 
-List, filter, and open files for editing from your shell, using dynamic
-fuzzy-matching of patterns as you type them in. A "fuzzy" match is one in which
-all the characters of the expression are found in the string in the same order
-as they occur in the expression, but not necessarily consecutively. If you want
-more control over the matching, you can use full-fledged regular expressions
-instead of fuzzy-matching. Searches can also be restricted to specific types of
-files, such as C++/C files, Python files, Java files, and so on.
+`FuzzySnake` is a filesystem navigation utility that lets you quickly locate
+and act on files and directories using dynamic fuzzy matching. A "fuzzy" match
+is one in which all the characters of the expression are found in the string in
+the same order as they occur in the expression, but not necessarily
+consecutively. If you want more control over the matching, you can use
+full-fledged regular expressions instead of fuzzy-matching. Searches can also
+be restricted to specific types of files, such as C++/C files, Python files,
+Java files, and so on.
 
 The single-file pure-Python design constraint ensures extreme deployment ease
 and portability: simply copy the application (which can be found in the "`bin`"
@@ -25,11 +33,6 @@ Demonstration
 You can see a demonstration of the basic usage of this program here:
 
     https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
-
-.. image:: https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
-   :height: 600px
-   :alt: Demonstration of FuzzySnake in action.
-   :target: https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
 
 Installation
 ------------
@@ -176,7 +179,27 @@ should automatically be filtered out without any effort from yourself. If you
 do *not* want this behavior, and want to actually see paths ignored by
 directives specified in the project's '`.gitignore`' or '`.git/info/exclude`'
 files, then use the '`--include-gitignores`' flag to request that
-`FuzzySnake` ignore these directives.
+`FuzzySnake` ignore these directives::
+
+    $ fz --include-gitignores
+
+Limiting the Search Depth
+-------------------------
+By default, `FuzzySnake` will drill down as far as it can go starting
+from the directory in which it was invoked or the directory path(s) passed to
+it as arguments. If you want to limit this, you can use the '`-r`' or
+'`--recursion-limit`' option. This takes any integer >= 0 as an argument, and
+specifies the maximum level of subdirectories that `FuzzySnake` should visit.
+A value of '0' means that the search will be restricted only to the top-level
+directory (i.e, the current directory or the directory paths explicitly passed
+as an argument)::
+
+    $ fz -r0
+    $ fz -r0 ~/projects/archives
+
+Higher numbers allow for deeper subdirectories to be visited::
+
+    $ fz -r2 ~/projects/archives
 
 Simultaneous Multiple Queries
 -----------------------------
