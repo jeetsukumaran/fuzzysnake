@@ -229,7 +229,7 @@ replaced with the name of the file or directory that you have selected::
 
     $ fz -c 'mv {} ~/some/other/path'
     $ fz -c 'cp {} {}.bak'
-    $ fz -c 'python {} > output.txt'
+    $ fz -c 'python {} --arg1 -arg2 posarg1 posarg2'
 
 Alternatively, if you just want to open the selected path using the system
 default application for the type of path, you can invoke `FuzzySnake` with the
