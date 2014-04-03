@@ -1045,6 +1045,12 @@ def build_arg_parser():
             const=r".*\.erl$|.*\.hrl$",
             help="Erlang")
     target_type_options.add_argument(
+            "--fasta",
+            action="append_const",
+            dest="target_filename_pattern",
+            const=r".*\.fas$|.*\.fasta$",
+            help="FASTA")
+    target_type_options.add_argument(
             "--fortran",
             action="append_const",
             dest="target_filename_pattern",
@@ -1135,6 +1141,18 @@ def build_arg_parser():
             const=r".*\.m$",
             help="MATLAB")
     target_type_options.add_argument(
+            "--newick",
+            action="append_const",
+            dest="target_filename_pattern",
+            const=r".*\.dat$|.*\.tre$|.*\.newick$",
+            help="Newick")
+    target_type_options.add_argument(
+            "--nexus",
+            action="append_const",
+            dest="target_filename_pattern",
+            const=r".*\.nex$|.*\.nexus$|.*\.nxs$|.*\.mb$|.*\trees$",
+            help="NEXUS")
+    target_type_options.add_argument(
             "--objc",
             action="append_const",
             dest="target_filename_pattern",
@@ -1187,7 +1205,7 @@ def build_arg_parser():
             action="append_const",
             dest="target_filename_pattern",
             const=r".*\.nex$|.*\.nexus$|.*\.nxs$|.*\.mb$|.*\.fas$|.*\.fasta$|.*\.tre$|.*\.trees$|.*\.xml$|.*\.dat$|.*\.nexml$|.*\.phylip$|.*\.aln$",
-            help="TeX")
+            help="Phylogenetics")
     target_type_options.add_argument(
             "--plone",
             action="append_const",
@@ -1289,7 +1307,7 @@ def build_arg_parser():
             action="append_const",
             dest="target_filename_pattern",
             const=r".*\.txt$",
-            help="TeX")
+            help="Plain text")
     target_type_options.add_argument(
             "--tt",
             action="append_const",

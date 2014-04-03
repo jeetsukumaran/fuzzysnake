@@ -114,9 +114,11 @@ using the '`-e`' or '`--regexp`' flag::
     $ fz -e
 
 In the middle of the search, while reviewing the list of candidates, you can
-cycle through the different match modes by typing '`<C-R`>'. The prompt will
-change to indicate the current match modes '`?`' (fuzzy), '`=`' (literal), or
-'`%`' (regular expression).
+cycle through the different match modes by typing '`<CTRL-R`>' (similar to
+toggling between fixed string and regular expression matching in `CtrlP
+<https://github.com/kien/ctrlp.vim>`_ for `Vim <http://www.vim.org>`_). The
+prompt will change to indicate the current match mode: '`?`' (fuzzy), '`=`'
+(literal), or '`%`' (regular expression).
 
 .. You can set a particular matching mode directly by:
 
@@ -130,9 +132,15 @@ Matching on the Whole Path or Just the Basename
 By default, `FuzzySnake` matches the entire path of each filesystem entry,
 i.e., all the components of the parent directory as well as the file basename.
 You can restrict the match to just the tail or basename of the path by invoking
-`FuzzySnake` with the '`-b`' flag. When reviewing or filtering the list, you
+`FuzzySnake` with the '`-b`' flag::
+
+    $ fz -b
+
+When reviewing or filtering the list, you
 can switch back-and-forth between matching the whole path or just the basename
-by using '<CTRL-D>'.
+by using '<CTRL-D>' (similar to toggling between full directory and filename
+path vs. filename only matching in `CtrlP <https://github.com/kien/ctrlp.vim>`_
+for `Vim <http://www.vim.org>`_).
 
 Restricting Searches by File Type
 ---------------------------------
@@ -151,6 +159,12 @@ Multiple types of files can be specified simultaneously::
     $ fz --python --sphinx --markdown
     $ fz --cpp --make --autotools
     $ fz --cpp --cmake
+
+Special support is available for some domains::
+
+    $ fz --phylogenetics
+    $ fz --nexus
+    $ fz --newick
 
 Excluding Files and Directories
 -------------------------------
