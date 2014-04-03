@@ -769,7 +769,7 @@ class Runner(object):
             if args.action_type == "edit":
                 execute_command(self.editor_path, filename)
             elif args.action_type == "open":
-                execute_command(open, filename)
+                execute_command("open", filename)
             elif args.action_type == "command":
                 execute_command(args.action_target, filename)
             elif args.action_type == "print":
