@@ -31,7 +31,7 @@ you are good to go!
 Demonstration
 -------------
 
-You can see a demonstration of the basic usage of this program here:
+You can see a demonstration this program being used here:
 
     https://raw.githubusercontent.com/jeetsukumaran/fuzzysnake/master/demo.gif
 
@@ -97,6 +97,10 @@ custom command on it using the '`-c`'/'`--execute-command`' option, or open the
 path in the type-specific system default application using the '`o`'/'`--open`'
 option. These are discussed in more detail below.
 
+If you decide that you do *not* want to follow through with any actions at all,
+you can hit '`<ESC>`' or '`<CTRL-C>`' or '`<CTRL-G>`' at any time to cancel
+`FuzzySnake` and return to the shell.
+
 Customizing the Match Mode
 --------------------------
 If the fuzzy matching is too fuzzy for you, you can use strict literal matching
@@ -109,12 +113,16 @@ using the '`-e`' or '`--regexp`' flag::
 
     $ fz -e
 
-You can switch matching modes in mid-search while reviewing the results list by
-typing:
+In the middle of the search, while reviewing the list of candidates, you can
+cycle through the different match modes by typing '`<C-R`>'. The prompt will
+change to indicate the current match modes '`?`' (fuzzy), '`=`' (literal), or
+'`%`' (regular expression).
 
-    - `<CTRL-F>` for fuzzy-matching mode,
-    - `<CTRL-E>` for regular-expression matching mode, and
-    - `<CTRL-L>` for literal-matching mode.
+.. You can set a particular matching mode directly by:
+
+.. - `<CTRL-F>` for fuzzy-matching mode,
+.. - `<CTRL-E>` for regular-expression matching mode, and
+.. - `<CTRL-L>` for literal-matching mode.
 
 Matching on the Whole Path or Just the Basename
 -----------------------------------------------
@@ -124,7 +132,7 @@ i.e., all the components of the parent directory as well as the file basename.
 You can restrict the match to just the tail or basename of the path by invoking
 `FuzzySnake` with the '`-b`' flag. When reviewing or filtering the list, you
 can switch back-and-forth between matching the whole path or just the basename
-by using '<CTRL-B>'.
+by using '<CTRL-D>'.
 
 Restricting Searches by File Type
 ---------------------------------

@@ -214,11 +214,11 @@ class CursesPrinter(object):
 
     def print_query(self, query, match_type):
         if match_type == "fuzzy":
-            prompt = "# "
+            prompt = "? "
         elif match_type == "literal":
-            prompt = "| "
+            prompt = "= "
         elif match_type == "regexp":
-            prompt = "$ "
+            prompt = "% "
         q = prompt + query
         self.querylen = len(q)
         height, width = self.window_size()
@@ -391,10 +391,18 @@ class Searcher(object):
             elif next_char == 16:
                 # <CTRL-P>: Previous
                 selected = self._select_previous(selected, len(current_heaps[-1]))
-            elif next_char == 2:
-                # <CTRL-B>: Cycle full-path vs. basename matching
+            elif next_char == 4:
+                # <CTRL-D>: Cycle full-path vs. basename matching
                 self.match_basename_only = not self.match_basename_only
                 current_heaps = self._reset_search(current_query, current_heaps)
+            elif next_char == 18:
+                # <CTRL-R>: Cycle matching-modes
+                if self.match_type == "literal":
+                    self.match_type = "regexp"
+                elif self.match_type == "fuzzy":
+                    self.match_type = "literal"
+                else:
+                    self.match_type = "fuzzy"
             elif next_char == 6:
                 # <CTRL-F>: Fuzzy-matching mode
                 self.match_type = "fuzzy"
@@ -420,8 +428,8 @@ class Searcher(object):
                         heapq.heappop(h)
                     return heapq.heappop(h)[1] if h else None
                 selected = 0
-                if next_char in (3, 4, 26, 28):
-                    # <CTRL-C>, <CTRL-D>, <CTRL-Z>, etc.
+                if next_char in (3, 7, 26, 28):
+                    # <CTRL-C>, <CTRL-G>, <CTRL-Z>, etc.
                     raise KeyboardInterrupt()
                 elif next_char in (8, 127):
                     # Delete/backspace
@@ -876,7 +884,7 @@ def build_arg_parser():
             "-b", "--basename-only-match",
             action="store_true",
             help="Restrict match to the basename or tail of the path only "
-            "(by default, entire path will be matched). Use `<CTRL-B>` to "
+            "(by default, entire path will be matched). Use `<CTRL-D>` to "
             "toggle this option on and off during the search.")
     query_options_section.add_argument(
             "-r", "--recursion-limit", "--max-depth",
