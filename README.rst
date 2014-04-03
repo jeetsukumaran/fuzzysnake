@@ -1,6 +1,11 @@
 FuzzySnake
 ==========
 
+.. contents::
+
+Introduction
+------------
+
 List, filter, and open files for editing from your shell, using dynamic
 fuzzy-matching of patterns as you type them in. A "fuzzy" match is one in which
 all the characters of the expression are found in the string in the same order
@@ -13,6 +18,9 @@ The single-file pure-Python design constraint ensures extreme deployment ease
 and portability: simply copy the application (which can be found in the "`bin`"
 subdirectory of the project: "`bin/fz`") to anywhere on your system PATH and
 you are good to go!
+
+Demonstration
+-------------
 
 You can see a demonstration of the basic usage of this program here:
 
