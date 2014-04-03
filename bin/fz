@@ -59,7 +59,7 @@ if sys.version_info.major >= 3:
     unicode_str = lambda x: str(x)
 else:
     unicode_str = lambda x: unicode(x, errors="ignore")
-import subprocess
+import shlex
 
 __prog__ = os.path.basename(__file__)
 __version__ = "1.0.0"
@@ -102,22 +102,40 @@ def truncate_front(line, length=70):
     # If it already fits
     if reduce_amt <= 0 or length <= 0:
         return line
-
     reduce_amt += 3 # for the ellipsis
     return '...'+line[reduce_amt:]
 
 def truncate_middle(line, length=70):
     reduce_amt = len(line) - length
-
     # If it already fits
     if reduce_amt <= 0 or length <= 0:
         return line
-
     reduce_amt += 3 # for the ellipsis
-
     start = (len(line) / 2) - (reduce_amt / 2)
     end = start + reduce_amt
     return "%s...%s" % (line[:start], line[end:])
+
+def execute_command(cmd,
+        arg=None,
+        substitute_token="{}"):
+    # Note: cannot use subprocess here due to parent process (this program)
+    # needing to exit before the subprocess is possibly done. `os.exec` and its
+    # kin work: independent process is spawn and the current process is
+    # replaced by it
+    cmd = shlex.split(cmd)
+    if arg is not None:
+        substitution_made = False
+        for idx, token in enumerate(cmd):
+            if token == substitute_token:
+                cmd[idx] = arg
+                substitution_made = True
+        if not substitution_made:
+            cmd.append(arg)
+    try:
+        os.execvp(cmd[0], cmd)
+    except OSError:
+        sys.stderr.write("Failed to execute command with tokens: {}\n".format(cmd))
+        sys.exit(1)
 
 class Entry(object):
 
@@ -728,19 +746,14 @@ class Runner(object):
         raise NotImplementedError()
 
     def run(self):
-        # note: cannot use subprocess here due to parent process (this program) needing to exit before
-        # the subprocess is possibly done. `os.exec` and its kin work: independent process is spawn and
-        # the current process is replaced by it
         filename = self.find()
         if filename is not None:
             if args.action_type == "edit":
-                try:
-                    os.execvp(self.editor_path, [self.editor_path, filename])
-                    # p = subprocess.Popen([self.editor_path, filename])
-                except OSError:
-                    sys.stderr.write("Failed to execute: os.execvp('{}', ['{}', '{}'])\n".format(self.editor_path, self.editor_path, filename))
-                    # sys.stderr.write("Failed to execute subprocess: subprocess.Popen(['{}', '{}'])\n".format(self.editor_path, filename))
-                    sys.exit(1)
+                execute_command(self.editor_path, filename)
+            elif args.action_type == "open":
+                execute_command(open, filename)
+            elif args.action_type == "command":
+                execute_command(args.action_target, filename)
             elif args.action_type == "print":
                 if not hasattr(args, "action_target") or args.action_target == "-":
                     out = sys.stdout
@@ -750,26 +763,6 @@ class Runner(object):
                     out.write(filename)
                     out.write("\n")
                 sys.exit(0)
-            # elif args.action_type == "print":
-            #     sys.stdout.write(filename)
-            #     sys.stdout.write("\n")
-            #     sys.exit(0)
-            elif args.action_type == "open":
-                try:
-                    os.execvp('open', ['open', filename])
-                    # p = subprocess.Popen(["open", filename])
-                except OSError:
-                    sys.stderr.write("Failed to execute: os.execvp('open', ['open', '{}'])\n".format(filename))
-                    # sys.stderr.write("Failed to execute subprocess: subprocess.Popen(['open', '{}'])\n".format(filename))
-                    sys.exit(1)
-            elif args.action_type == "command":
-                try:
-                    os.execvp(args.action_target, [args.action_target, filename])
-                    # p = subprocess.Popen([args.action_target, filename])
-                except OSError:
-                    sys.stderr.write("Failed to execute: os.execvp('{}', ['{}', '{}'])\n".format(args.action_target, args.action_target, filename))
-                    # sys.stderr.write("Failed to execute subprocess: subprocess.Popen(['{}', '{}'])\n".format(args.action_target, filename))
-                    sys.exit(1)
             else:
                 sys.exit("Unrecognized action: '{}'".format(args.action_type))
 
@@ -1383,7 +1376,11 @@ def build_arg_parser():
             action=SetCustomCommandAction,
             dest="action_type",
             metavar="COMMAND",
-            help="Execute `COMMAND` with the selected file or directory path as an argument.")
+            help="Execute `COMMAND` with the selected file or directory path name as an argument. "
+            "If the token '{}' occurs in the COMMAND string, it will be replaced with the "
+            "selected file or directory path name. If this token is not found in the COMMAND "
+            "string, then the execution string will be COMMAND as-is followed by the selected "
+            "file or directory path name.")
     parser.set_defaults(action_type="edit")
 
     return parser.parse_args()
