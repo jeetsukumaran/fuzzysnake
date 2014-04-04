@@ -129,18 +129,18 @@ prompt will change to indicate the current match mode: '`?`' (fuzzy), '`=`'
 Matching on the Whole Path or Just the Basename
 -----------------------------------------------
 
-By default, `FuzzySnake` matches the entire path of each filesystem entry,
-i.e., all the components of the parent directory as well as the file basename.
-You can restrict the match to just the tail or basename of the path by invoking
-`FuzzySnake` with the '`-b`' flag::
+By default, `FuzzySnake` matches against just the basename of each filesystem
+entry, i.e. just the last component of the complete path to the file or
+directory.  If you want to match against the whole path, i.e. all the
+components of the parent directory as well as the basename, then invoke
+`FuzzySnake` with the '`-w`' flag::
 
-    $ fz -b
+    $ fz -w
 
-When reviewing or filtering the list, you
-can switch back-and-forth between matching the whole path or just the basename
-by using '<CTRL-D>' (similar to toggling between full directory and filename
-path vs. filename only matching in `CtrlP <https://github.com/kien/ctrlp.vim>`_
-for `Vim <http://www.vim.org>`_).
+When reviewing or filtering the list, you can switch back-and-forth between
+matching the whole path or just the basename by using '<CTRL-D>' (similar to
+toggling between full directory and filename path vs. filename only matching in
+`CtrlP <https://github.com/kien/ctrlp.vim>`_ for `Vim <http://www.vim.org>`_).
 
 Restricting Searches by File Type
 ---------------------------------
@@ -226,7 +226,7 @@ Higher numbers allow for deeper subdirectories to be visited::
 
 Simultaneous Multiple Queries
 -----------------------------
-Using the '`-m`' flag, multiple queries can be run simultaneously,
+Using the '`-w`' flag, multiple queries can be run simultaneously,
 with whitespace separating query terms: a query for "hello world" would
 result in two filters: "hello" and "world", requiring a file to match both.
 This can be useful for specifying part of a filename and then the file

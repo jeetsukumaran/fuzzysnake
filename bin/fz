@@ -155,11 +155,11 @@ class Entry(object):
             score,
             match_start,
             match_end,
-            match_basename_only):
+            whole_path_matching):
         self.dirname = dirname
         self.filename = filename
         self.score = score
-        self.match_basename_only = match_basename_only
+        self.whole_path_matching = whole_path_matching
         self._match_start_offset = match_start
         self._match_end_offset = match_end
 
@@ -172,19 +172,19 @@ class Entry(object):
     start_of_basename_in_filepath = property(_start_of_basename_in_filepath)
 
     def _get_match_start(self):
-        if self.match_basename_only:
-            return self.start_of_basename_in_filepath + self._match_start_offset
-        else:
+        if self.whole_path_matching:
             return self._match_start_offset
+        else:
+            return self.start_of_basename_in_filepath + self._match_start_offset
     def _set_match_start(self, v):
         self._match_start_offset = v
     match_start = property(_get_match_start, _set_match_start)
 
     def _get_match_end(self):
-        if self.match_basename_only:
-            return self.start_of_basename_in_filepath + self._match_end_offset
-        else:
+        if self.whole_path_matching:
             return self._match_end_offset
+        else:
+            return self.start_of_basename_in_filepath + self._match_end_offset
     def _set_match_end(self, v):
         self._match_end_offset = v
     match_end = property(_get_match_end, _set_match_end)
@@ -281,12 +281,12 @@ class Searcher(object):
             ranker,
             output,
             whitespace_separated_multiquery=False,
-            match_basename_only=False,
+            whole_path_matching=False,
             match_type="fuzzy"):
         self.ranker = ranker
         self.output = output
         self.whitespace_separated_multiquery = whitespace_separated_multiquery
-        self.match_basename_only = match_basename_only
+        self.whole_path_matching = whole_path_matching
         self.match_type = match_type
 
     def _getch(self, blocking=True):
@@ -328,10 +328,10 @@ class Searcher(object):
         newHeap = []
         ranker = self.ranker(query=query,
                 whitespace_separated_multiquery=self.whitespace_separated_multiquery,
-                match_basename_only=self.match_basename_only,
+                whole_path_matching=self.whole_path_matching,
                 match_type=self.match_type)
         for w, item in cur_heap:
-            item.match_basename_only = self.match_basename_only # needs to be updated here
+            item.whole_path_matching = self.whole_path_matching # needs to be updated here
             try:
                 score, match_start, match_end = ranker.rank(item)
             except FuzzyRanker.IncompleteRegularExpressionPatternException:
@@ -403,7 +403,7 @@ class Searcher(object):
                 selected = self._select_previous(selected, len(current_heaps[-1]))
             elif next_char == 4:
                 # <CTRL-D>: Cycle full-path vs. basename matching
-                self.match_basename_only = not self.match_basename_only
+                self.whole_path_matching = not self.whole_path_matching
                 current_heaps = self._reset_search(current_query, current_heaps)
             elif next_char == 18:
                 # <CTRL-R>: Cycle matching-modes
@@ -599,7 +599,7 @@ class DirectorySource(object):
                             score=len(results),
                             match_start=0,
                             match_end=0,
-                            match_basename_only=False)
+                            whole_path_matching=False)
                     results.append(entry)
             # have to delete the names manually
             if fltr is not None:
@@ -723,10 +723,10 @@ class FuzzyRanker(object):
     def __init__(self,
             query,
             whitespace_separated_multiquery=False,
-            match_basename_only=False,
+            whole_path_matching=False,
             match_type="fuzzy"):
         self.whitespace_separated_multiquery = whitespace_separated_multiquery
-        self.match_basename_only =match_basename_only
+        self.whole_path_matching = whole_path_matching
         self.weight_f = lambda f: f.dirname.count(os.sep) ** 0.5
         self.qs = query.lower()
         if self.whitespace_separated_multiquery:
@@ -736,10 +736,10 @@ class FuzzyRanker(object):
         self.match_type = match_type
 
     def rank(self, item):
-        if self.match_basename_only:
-            part = item.filename
-        else:
+        if self.whole_path_matching:
             part = item.filepath
+        else:
+            part = item.filename
         agg_score = 0.0
         match_start = len(part)
         match_end = -1
@@ -821,7 +821,7 @@ class DirRun(Runner):
                                 score=len(items),
                                 match_start=0,
                                 match_end=0,
-                                match_basename_only=False)
+                                whole_path_matching=False)
                         items.append(entry)
                 sys.stdin = open("/dev/tty", "r")
             else:
@@ -848,8 +848,8 @@ class DirRun(Runner):
         ranker = FuzzyRanker
         s = Searcher(ranker=ranker,
                 output=CursesPrinter(),
-                whitespace_separated_multiquery=self.args.multi_pattern,
-                match_basename_only=self.args.basename_only_match,
+                whitespace_separated_multiquery=self.args.whitespace_separated_multi_pattern,
+                whole_path_matching=self.args.whole_path_match,
                 match_type=self.args.match_type,
                 )
         try:
@@ -886,7 +886,7 @@ def build_arg_parser():
 
     query_options_section = parser.add_argument_group("Query Options")
     query_options_section.add_argument(
-            "-m", "--multi-pattern",
+            "-m", "--whitespace-separated-multi-pattern",
             action="store_true",
             help="Whitespace-separated multiple-queries: whitespaces in "
             "the query will be treated as separators for query terms, "
@@ -901,11 +901,14 @@ def build_arg_parser():
             default=False,
             help="Search for directory paths instead of filenames.")
     query_options_section.add_argument(
-            "-b", "--basename-only-match",
+            "-w", "--whole-path-match",
             action="store_true",
-            help="Restrict match to the basename or tail of the path only "
-            "(by default, entire path will be matched). Use `<CTRL-D>` to "
-            "toggle this option on and off during the search.")
+            default=False,
+            help="Matching against the *full* path of the file or directory, "
+            "including the parent directory name. If not specified, by "
+            "default, matching is agains the *basename* only. "
+            "Use `<CTRL-D>` to toggle between full path and basename matching "
+            "during the search.")
     query_options_section.add_argument(
             "-r", "--recursion-limit", "--max-depth",
             dest="max_recursion_depth",
