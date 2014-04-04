@@ -62,7 +62,7 @@ else:
 import shlex
 
 __prog__ = os.path.basename(__file__)
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 __description__ = __doc__
 __author__ = 'Jeet Sukumaran'
 __copyright__ = 'Copyright (C) 2014 Jeet Sukumaran.'
