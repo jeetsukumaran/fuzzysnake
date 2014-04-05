@@ -56,9 +56,10 @@ if sys.version_info.major >= 3:
 else:
     unicode_str = lambda x: unicode(x, errors="ignore")
 import shlex
+import itertools
 
 __prog__ = os.path.basename(__file__)
-__version__ = "2.1.1"
+__version__ = "2.1.2"
 __description__ = __doc__
 __author__ = 'Jeet Sukumaran'
 __copyright__ = 'Copyright (C) 2014 Jeet Sukumaran.'
@@ -204,6 +205,50 @@ class SandboxedStdOut(object):
         os.dup2(self.prev_stdout_fd, self.prev_stdout.fileno())
         self.stdout = self.prev_stdout
         # os.dup2(self.old_stdout, 1)
+
+class CursesProgressTicker(object):
+
+    def __init__(self):
+        self.window = None
+        self.current_step = 0
+        self.spinner_cycle = itertools.cycle(["|", "/", "-", "\\", "-",])
+
+    def __enter__(self):
+        self.window = curses.initscr()
+        curses.start_color()
+        curses.use_default_colors()
+        curses.noecho()
+        self.window.nodelay(1)
+        try:
+            curses.curs_set(0)
+        except curses.error:
+            pass
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.cleanup()
+
+    def cleanup(self):
+        self.window.nodelay(0)
+        curses.echo()
+        curses.endwin()
+
+    def check_for_cancel(self):
+        self.window.nodelay(1)
+        ch = self.window.getch()
+        if ch == 27:
+            next_char = self.window.getch()
+            if next_char == -1:
+                raise KeyboardInterrupt()
+        self.window.nodelay(0)
+
+    def update(self, message):
+        self.current_step += 1
+        height, width = get_screen_dimensions()
+        self.window.move(height-1, 0)
+        # self.window.addstr("[" + next(self.spinner_cycle) + "] " + message)
+        self.window.addstr(next(self.spinner_cycle) + " " + message)
+        self.window.refresh()
 
 class CursesPrinter(object):
 
@@ -563,62 +608,69 @@ class DirectorySource(object):
             self.find_parent_gis(start_dir)
         if results is None:
             results = []
-        for dirname, dirs, filenames in walk(start_dir):
-            if self.max_recursion_depth is not None:
-                recursion_level = dirname.count(os.path.sep)
-                if recursion_level == self.max_recursion_depth:
-                    del dirs[:]
-                elif recursion_level > self.max_recursion_depth:
-                    continue
-            if self.respect_gitignores and ".git" in dirs:
-                giexclude = os.path.join('.git', 'info', 'exclude')
-                if os.path.isfile(os.path.join(dirname, giexclude)):
-                    gief = GitIgnoreFilter(dirname, giexclude)
-                    self.git_exclude_filters.append(gief)
-            if DirectorySource.dot_dirs_ignore_pattern.match(dirname):
-                continue
-            if self.dirs_to_exclude is not None and self.dirs_to_exclude.match(dirname):
-                continue
-            names = []
-            if not self.ignore_files:
-                for f in filenames:
-                    if ( (self.files_to_exclude is None or not self.files_to_exclude.match(f))
-                            and (self.target_filename_pattern is None or self.target_filename_pattern.match(f))):
-                        # if self.paths_to_exclude is not None:
-                        #     # only do this if actual paths to exclude
-                        #     ff = os.path.join(dirname, f)
-                        #     if not self.paths_to_exclude.match(f):
-                        #         names.append(f)
-                        # else:
-                        #     names.append(f)
-                        names.append(f)
-            if not self.ignore_directories:
-                names.extend(dirs)
-            if self.respect_gitignores and '.gitignore' in filenames:
-                gif = GitIgnoreFilter(dirname, '.gitignore', self.git_exclude_filters)
-                self.filters.append((dirname, gif))
-            while self.filters: # find filter that applies to current path
-                path, filter_obj = self.filters[-1]
-                if dirname.startswith(path):
-                    break
-                self.filters.pop()
-            fltr = None
-            if self.filters:
-                fltr = self.filters[-1][1] # grab filter object of last filter entry
-            for name in names:
-                if fltr is None or fltr(name, dirname):
-                    entry = Entry(dirname=dirname,
-                            filename=name,
-                            score=len(results),
-                            match_start=0,
-                            match_end=0,
-                            whole_path_matching=False)
-                    results.append(entry)
-            # have to delete the names manually
-            if fltr is not None:
-                for i in range(len(dirs) - 1, -1, -1):
-                    if not fltr(dirs[i], dirname):
-                        del dirs[i]
+        with SandboxedStdOut() as sb:
+            with CursesProgressTicker() as progress:
+                total_items_scanned = 0
+                for search_idx, (dirname, dirs, filenames) in enumerate(walk(start_dir)):
+                    progress.check_for_cancel()
+                    total_items_scanned += (1 + len(dirs) + len(filenames))
+                    if search_idx % 100 == 0:
+                        progress.update("Scanning: found {} out of {} names".format(len(results), total_items_scanned))
+                    if self.max_recursion_depth is not None:
+                        recursion_level = dirname.count(os.path.sep)
+                        if recursion_level == self.max_recursion_depth:
+                            del dirs[:]
+                        elif recursion_level > self.max_recursion_depth:
+                            continue
+                    if self.respect_gitignores and ".git" in dirs:
+                        giexclude = os.path.join('.git', 'info', 'exclude')
+                        if os.path.isfile(os.path.join(dirname, giexclude)):
+                            gief = GitIgnoreFilter(dirname, giexclude)
+                            self.git_exclude_filters.append(gief)
+                    if DirectorySource.dot_dirs_ignore_pattern.match(dirname):
+                        continue
+                    if self.dirs_to_exclude is not None and self.dirs_to_exclude.match(dirname):
+                        continue
+                    names = []
+                    if not self.ignore_files:
+                        for f in filenames:
+                            if ( (self.files_to_exclude is None or not self.files_to_exclude.match(f))
+                                    and (self.target_filename_pattern is None or self.target_filename_pattern.match(f))):
+                                # if self.paths_to_exclude is not None:
+                                #     # only do this if actual paths to exclude
+                                #     ff = os.path.join(dirname, f)
+                                #     if not self.paths_to_exclude.match(f):
+                                #         names.append(f)
+                                # else:
+                                #     names.append(f)
+                                names.append(f)
+                    if not self.ignore_directories:
+                        names.extend(dirs)
+                    if self.respect_gitignores and '.gitignore' in filenames:
+                        gif = GitIgnoreFilter(dirname, '.gitignore', self.git_exclude_filters)
+                        self.filters.append((dirname, gif))
+                    while self.filters: # find filter that applies to current path
+                        path, filter_obj = self.filters[-1]
+                        if dirname.startswith(path):
+                            break
+                        self.filters.pop()
+                    fltr = None
+                    if self.filters:
+                        fltr = self.filters[-1][1] # grab filter object of last filter entry
+                    for name in names:
+                        if fltr is None or fltr(name, dirname):
+                            entry = Entry(dirname=dirname,
+                                    filename=name,
+                                    score=len(results),
+                                    match_start=0,
+                                    match_end=0,
+                                    whole_path_matching=False)
+                            results.append(entry)
+                    # have to delete the names manually
+                    if fltr is not None:
+                        for i in range(len(dirs) - 1, -1, -1):
+                            if not fltr(dirs[i], dirname):
+                                del dirs[i]
         return results
 
 class GitIgnoreFilter(object):
@@ -858,7 +910,10 @@ class DirRun(Runner):
         return items
 
     def find(self):
-        items = self.fetch()
+        try:
+            items = self.fetch()
+        except KeyboardInterrupt:
+            sys.exit(1) # error so no process will execute anything on blank output
         if not items:
             sys.stderr.write("No valid files or directories found.\n")
             sys.exit(0)
