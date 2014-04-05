@@ -59,7 +59,7 @@ import shlex
 import itertools
 
 __prog__ = os.path.basename(__file__)
-__version__ = "2.1.2"
+__version__ = "2.1.3"
 __description__ = __doc__
 __author__ = 'Jeet Sukumaran'
 __copyright__ = 'Copyright (C) 2014 Jeet Sukumaran.'
@@ -645,7 +645,10 @@ class DirectorySource(object):
                                 #     names.append(f)
                                 names.append(f)
                     if not self.ignore_directories:
-                        names.extend(dirs)
+                        for candidate_dir in dirs:
+                            if (not DirectorySource.dot_dirs_ignore_pattern.match(candidate_dir)
+                                    and (self.dirs_to_exclude is None or not self.dirs_to_exclude.match(candidate_dir))):
+                                names.append(candidate_dir)
                     if self.respect_gitignores and '.gitignore' in filenames:
                         gif = GitIgnoreFilter(dirname, '.gitignore', self.git_exclude_filters)
                         self.filters.append((dirname, gif))
