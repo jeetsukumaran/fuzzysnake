@@ -7,23 +7,16 @@
 ## FuzzySnake
 bind '"\C-f": "fz\n"'
 
-## `fd` to select and go to a directory
+## `fd`: select and go to a directory
 function fd() {
-    _OFILE=/tmp/fz.out
-    if [ -f $_OFILE ]
+    # One-liner version: cd $(fz --stdout -d || echo ".")
+    DESTDIR=$(fz --stdout -d)
+    if [ -n "$DESTDIR" ]
     then
-        rm $_OFILE
+        echo $(_get_abs_path "${DESTDIR}")
+        cd "$DESTDIR"
     fi
-    fz -d -p $_OFILE
-    if [ -f $_OFILE ]
-    then
-        targetdir=$(cat $_OFILE)
-        # targetdir=$(printf '%q' "$targetdir") # escape special characters
-        echo $(_get_abs_path "${targetdir}") # get absolute path
-        cd "${targetdir}"
-        rm $_OFILE
-    fi
-    unset _OFILE
+    unset DESTDIR
 }
 
 # supporting functions

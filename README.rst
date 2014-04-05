@@ -16,12 +16,12 @@ Introduction
 
 `FuzzySnake` is a filesystem navigation utility that lets you quickly locate
 and act on files and directories using dynamic fuzzy matching. A "fuzzy" match
-is one in which all the characters of the expression are found in the string in
-the same order as they occur in the expression, but not necessarily
-consecutively. If you want more control over the matching, you can use
-full-fledged regular expressions instead of fuzzy-matching. Searches can also
-be restricted to specific types of files, such as C++/C files, Python files,
-Java files, and so on.
+is one in which all the characters of the search expression are found in the
+matched string in the same order as they occur in the search expression, but
+not necessarily consecutively. If you want more control over the matching, you
+can use full-fledged regular expressions instead of fuzzy-matching. Searches
+can also be restricted to specific types of files, such as C++/C files, Python
+files, Java files, and so on.
 
 The single-file pure-Python design constraint ensures extreme deployment ease
 and portability: simply copy the application (which can be found in the "`bin`"
@@ -259,11 +259,12 @@ default application for the type of path, you can invoke `FuzzySnake` with the
 
     $ fz -o
 
-You can also use the '`-p`'/'`--print`' flag to have `FuzzySnake` write out the
-name of the selected path to a specified file. This is typically used when
-using `FuzzySnake` as part of a custom shell function or command, such as the
-"fuzzily-change-directory" command described below and given in the example
-'`fztricks.sh`" file.
+You can also use the '`-p`'/'`--print`' option to have `FuzzySnake` write out
+the name of the selected path to a specified file, or the '`-1`'/'`--stdout`'
+flag to write out the name of the selected path to the standard output. This is
+typically used when using `FuzzySnake` as part of a custom shell function or
+command, such as the "fuzzily-change-directory" command described below and
+given in the example '`fztricks.sh`" file.
 
 Opening All the Files and Directories Found
 -------------------------------------------
@@ -333,21 +334,19 @@ These enhancements include:
 - A new command, `fd`, to change to a directory selected via `FuzzySnake`::
 
     function fd() {
-        _OFILE=/tmp/fz.out
-        if [ -f $_OFILE ]
+        DESTDIR=$(fz --stdout -d)
+        if [ -n "$DESTDIR" ]
         then
-            rm $_OFILE
+            echo $(_get_abs_path "${DESTDIR}")
+            cd "$DESTDIR"
         fi
-        fz -d -p $_OFILE
-        if [ -f $_OFILE ]
-        then
-            targetdir=$(cat $_OFILE)
-            echo "$targetdir"
-            cd "${targetdir}"
-            rm $_OFILE
-        fi
-        unset _OFILE
+        unset DESTDIR
     }
+
+ Note that this same can be done with a one-liner if you do not care for the
+ absolute path to the directory that you are changing to to be echoed::
+
+    cd $(fz -1 -d || echo ".")
 
 Acknowledgements
 ----------------

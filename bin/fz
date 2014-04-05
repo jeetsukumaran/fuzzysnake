@@ -26,12 +26,8 @@
 ################################################################################
 
 """
-Find, list and select a file for editing, dynamically filtering listings using
-fuzzy-matching. For more powerful and flexible matching, regular expressions
-can be used. Searches can be restricted to specific file types, such as Python
-or C++/C source code files. A custom editor to use can be specified by setting
-the $FUZZYSNAKE_EDITOR environmental variable, otherwise the editor specifed in
-$EDITOR will be used.
+Find, list, filter and act on files or directories directly from the terminal
+using dynamic fuzzy-matching or regular-expressions.
 """
 
 import os
@@ -62,7 +58,7 @@ else:
 import shlex
 
 __prog__ = os.path.basename(__file__)
-__version__ = "2.1.0"
+__version__ = "2.1.1"
 __description__ = __doc__
 __author__ = 'Jeet Sukumaran'
 __copyright__ = 'Copyright (C) 2014 Jeet Sukumaran.'
@@ -191,6 +187,23 @@ class Entry(object):
 
     def __lt__(self, other):
         return self.score < other.score
+
+class SandboxedStdOut(object):
+
+    def __enter__(self):
+        # clone stdout: this allows us to open
+        # the curses window in a subshell and
+        # print the result to the "real" stdout
+        # on exit
+        self.prev_stdout_fd = os.dup(sys.stdout.fileno())
+        self.new_stdout_clone = os.open("/dev/tty", os.O_WRONLY)
+        os.dup2(self.new_stdout_clone, sys.stdout.fileno()) # 1
+        self.prev_stdout = sys.stdout
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        os.dup2(self.prev_stdout_fd, self.prev_stdout.fileno())
+        self.stdout = self.prev_stdout
+        # os.dup2(self.old_stdout, 1)
 
 class CursesPrinter(object):
 
@@ -774,12 +787,16 @@ class Runner(object):
                 execute_command(args.action_target, filename)
             elif args.action_type == "print":
                 if not hasattr(args, "action_target") or args.action_target == "-":
-                    out = sys.stdout
+                    # sys.stdout = os.fdopen(1, 'w', 0) # restore original stdout
+                    # out = os.fdopen(1, 'w', 0) # restore original stdout
+                    sys.stdout.write(filename)
+                    # out.write("\n")
+                    sys.exit(0)
                 else:
                     out = open(os.path.expandvars(os.path.expanduser(args.action_target)), "w")
-                with out:
-                    out.write(filename)
-                    out.write("\n")
+                    with out:
+                        out.write(filename)
+                        out.write("\n")
                 sys.exit(0)
             else:
                 sys.exit("Unrecognized action: '{}'".format(args.action_type))
@@ -853,11 +870,13 @@ class DirRun(Runner):
                 match_type=self.args.match_type,
                 )
         try:
-            found = s.run(items)
+            with SandboxedStdOut() as ssout:
+                found = s.run(items)
         except KeyboardInterrupt:
-            sys.exit(0)
+            sys.exit(1) # error so no process will execute anything on blank output
         if found is not None:
             found = os.path.join(found.dirname, found.filename)
+        # s.output.cleanup()
         return found
 
     def print_list(self,
@@ -1419,7 +1438,14 @@ def build_arg_parser():
             action=SetPrintAction,
             dest="action_type",
             metavar="FILEPATH",
-            help="Prints the selected file or directory name to FILEPATH (use '-' to specify standard output).")
+            help="Prints the selected file or directory name to FILEPATH.")
+    action_group.add_argument(
+            "-1", "--stdout",
+            action=SetPrintAction,
+            dest="action_type",
+            nargs=0,
+            metavar="FILEPATH",
+            help="Prints the selected file or directory name to standard output.")
     action_group.add_argument(
             "-o", "--open",
             action="store_const",
@@ -1443,8 +1469,8 @@ def build_arg_parser():
             const="list-and-exit",
             help="[SPECIAL] Instead of listing the names of files and directories found for "
             "you to select a particular one, print the names to standard output. This option "
-            "allows you to do, e.g., 'vim $(fz --python src/)' to quickly open all the Python "
-            "files in the 'src/' subdirectory)")
+            "allows you to do, e.g., 'vim $(fz -L --python src/)' to quickly open all the "
+            "Python files in the 'src/' subdirectory)")
     parser.set_defaults(action_type="edit")
 
     return parser.parse_args()
@@ -1456,7 +1482,10 @@ class SetPrintAction(argparse.Action):
             values,
             option_string=None):
         namespace.action_type = "print"
-        namespace.action_target = values
+        if option_string == "--stdout":
+            namespace.action_target = "-"
+        else:
+            namespace.action_target = values
 
 class SetCustomCommandAction(argparse.Action):
     def __call__(self,
