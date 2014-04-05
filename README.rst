@@ -343,8 +343,8 @@ These enhancements include:
         unset DESTDIR
     }
 
- Note that this same can be done with a one-liner if you do not care for the
- absolute path to the directory that you are changing to to be echoed::
+ Note that this same can be done with a one-liner if you do not care to have the
+ absolute path to the directory that you are changing to to be printed::
 
     cd $(fz -1 -d || echo ".")
 

@@ -26,8 +26,8 @@
 ################################################################################
 
 """
-Find, list, filter and act on files or directories directly from the terminal
-using dynamic fuzzy-matching or regular-expressions.
+A utility to find, list, filter, and act on files or directories from your
+shell, using dynamic fuzzy-matching of patterns as you type them in.
 """
 
 import os
