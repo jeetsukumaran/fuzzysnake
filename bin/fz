@@ -115,7 +115,7 @@ def truncate_middle(line, length=70):
 def execute_command(cmd,
         args=None,
         substitute_token="{}",
-        verbose=True):
+        verbose=False):
     # Note: cannot use subprocess here due to parent process (this program)
     # needing to exit before the subprocess is possibly done. `os.exec` and its
     # kin work: independent process is spawn and the current process is
