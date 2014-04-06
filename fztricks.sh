@@ -10,7 +10,7 @@ bind '"\C-f": "fz\n"'
 ## `fd`: select and go to a directory
 function fd() {
     # One-liner version: cd $(fz --stdout -d || echo ".")
-    DESTDIR=$(fz --stdout -d)
+    DESTDIR=$(fz --stdout --single-selection -d)
     if [ -n "$DESTDIR" ]
     then
         echo $(_get_abs_path "${DESTDIR}")

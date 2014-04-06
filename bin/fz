@@ -59,7 +59,7 @@ import shlex
 import itertools
 
 __prog__ = os.path.basename(__file__)
-__version__ = "2.1.3"
+__version__ = "2.2.1"
 __description__ = __doc__
 __author__ = 'Jeet Sukumaran'
 __copyright__ = 'Copyright (C) 2014 Jeet Sukumaran.'
@@ -509,13 +509,15 @@ class Searcher(object):
                 # <CTRL-W>: Toggle whitespace-separated multi-search
                 self.whitespace_separated_multiquery = not self.whitespace_separated_multiquery
                 current_heaps = self._reset_search(current_query, current_heaps)
-            elif next_char == 9 and self.multiselection_mode:
-                # <TAB>: toggle
-                current_heaps[-1][selected][1].is_selected = not current_heaps[-1][selected][1].is_selected
-            elif next_char == 21 and self.multiselection_mode:
-                # <CTRL-U>: Unmark all
-                for w, item in current_heaps[-1]:
-                    item.is_selected = False
+            elif next_char == 9:
+                # <TAB>: toggle in multiselection mode; simply consume character otherwise
+                if self.multiselection_mode:
+                    current_heaps[-1][selected][1].is_selected = not current_heaps[-1][selected][1].is_selected
+            elif next_char == 21:
+                # <CTRL-U>: Unmark all in multiselection mode; simply consume character otherwise
+                if self.multiselection_mode:
+                    for w, item in current_heaps[-1]:
+                        item.is_selected = False
             else:
                 # Selected
                 if next_char == 10 or next_char == 13: # enter
@@ -524,6 +526,7 @@ class Searcher(object):
                         h = current_heaps[-1]
                         return [item[1] for item in current_heaps[-1] if item[1].is_selected]
                     else:
+                        h = current_heaps[-1]
                         for _ in range(selected):
                             if not h: break
                             heapq.heappop(h)
@@ -1006,6 +1009,12 @@ def build_arg_parser():
             help="Maximum depth of sub-directories to recursively search. "
             "If not specified, recursion depth is unlimited. If 0, then "
             "only the top-level directory is searched.")
+    search_options_section.add_argument(
+            "-s", "--single-selection",
+            action="store_false",
+            dest="multiselection_mode",
+            default=True,
+            help="Do not allow multiple entries to be marked/unmarked for selection using <TAB>.")
 
     query_options_section = parser.add_argument_group("Query Options")
     query_options_section.add_argument(
@@ -1531,7 +1540,7 @@ def build_arg_parser():
             metavar="FILEPATH",
             help="Prints the selected file or directory name to FILEPATH.")
     action_group.add_argument(
-            "-1", "--stdout",
+            "--stdout",
             action=SetPrintAction,
             dest="action_type",
             nargs=0,
@@ -1573,7 +1582,7 @@ class SetPrintAction(argparse.Action):
             values,
             option_string=None):
         namespace.action_type = "print"
-        if option_string == "--stdout" or option_string == "-1":
+        if option_string == "--stdout":
             namespace.action_target = "-"
         else:
             namespace.action_target = values
@@ -1589,7 +1598,6 @@ class SetCustomCommandAction(argparse.Action):
 
 if __name__ == '__main__':
     args = build_arg_parser()
-    args.multiselection_mode = True
     runner = DirRun(args)
     if args.action_type == "list-and-exit":
         runner.print_list()

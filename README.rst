@@ -348,7 +348,7 @@ These enhancements include:
 - A new command, `fd`, to change to a directory selected via `FuzzySnake`::
 
     function fd() {
-        DESTDIR=$(fz --stdout -d)
+        DESTDIR=$(fz --stdout --single-selection -d)
         if [ -n "$DESTDIR" ]
         then
             echo $(_get_abs_path "${DESTDIR}")
@@ -357,10 +357,10 @@ These enhancements include:
         unset DESTDIR
     }
 
- Note that this same can be done with a one-liner if you do not care to have the
- absolute path to the directory that you are changing to to be printed::
+ Note that this can also be done with a one-liner if you do not care to have
+ the absolute path to the directory that you are changing to to be printed::
 
-    cd $(fz -1 -d || echo ".")
+    cd $(fz --stdout --single-selection -d || echo ".")
 
 Acknowledgements
 ----------------
