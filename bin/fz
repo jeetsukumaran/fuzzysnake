@@ -510,7 +510,12 @@ class Searcher(object):
                 self.whitespace_separated_multiquery = not self.whitespace_separated_multiquery
                 current_heaps = self._reset_search(current_query, current_heaps)
             elif next_char == 9 and self.multiselection_mode:
+                # <TAB>: toggle
                 current_heaps[-1][selected][1].is_selected = not current_heaps[-1][selected][1].is_selected
+            elif next_char == 21 and self.multiselection_mode:
+                # <CTRL-U>: Unmark all
+                for w, item in current_heaps[-1]:
+                    item.is_selected = False
             else:
                 # Selected
                 if next_char == 10 or next_char == 13: # enter
