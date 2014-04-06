@@ -277,7 +277,8 @@ output ('`-1`' or '`--standard-output`'), executing an arbitrary command on the
 entries ('`-c`'/'`--execute-command`') and so on. Note that typing `<ENTER>` on
 an unmarked entry automatically adds that entry to the list of selected
 entries, and the specified action will be invoked on it as well as the other
-selected entries.
+selected entries. If you type `<CTRL-U>` at any time, all marked items will be
+unmarked.
 
 Opening All the Files and Directories Found
 -------------------------------------------
