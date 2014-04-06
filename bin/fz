@@ -873,9 +873,9 @@ class Runner(object):
         elif args.action_type == "print":
             if not hasattr(args, "action_target") or args.action_target == "-":
                 for filepath in filepaths:
-                    sys.stdout.write(filename)
+                    sys.stdout.write(filepath)
                     sys.stdout.write("\n")
-                    sys.exit(0)
+                sys.exit(0)
             else:
                 out = open(os.path.expandvars(os.path.expanduser(args.action_target)), "w")
                 with out:
@@ -1568,7 +1568,7 @@ class SetPrintAction(argparse.Action):
             values,
             option_string=None):
         namespace.action_type = "print"
-        if option_string == "--stdout":
+        if option_string == "--stdout" or option_string == "-1":
             namespace.action_target = "-"
         else:
             namespace.action_target = values
