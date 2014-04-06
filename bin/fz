@@ -314,26 +314,25 @@ class CursesPrinter(object):
             raise CursesPrinter.OutOfWindowBoundsException
         self.window.move(row, 0)
         entry = truncate_middle(item.filepath, width)
+        weight = curses.A_NORMAL
         if item.is_selected:
-            leader = ">"
+            self.window.addstr(">", self.default_color | curses.A_BOLD)
+            weight = curses.A_BOLD
         else:
-            leader = " "
+            self.window.addstr(" ", self.default_color)
         if is_current_row:
-            leader += "> "
+            self.window.addstr("> ", self.default_color)
             weight = curses.A_REVERSE
         else:
-            leader += "  "
-            weight = curses.A_NORMAL
+            self.window.addstr("  ", self.default_color)
         if item.score > 0:
             left = entry[:item.match_start]
             main = entry[item.match_start:item.match_end]
             right = entry[item.match_end:]
-            self.window.addstr(leader)
             self.window.addstr(left, self.default_color | weight)
             self.window.addstr(main, self.match_color | weight)
             self.window.addstr(right, self.default_color | weight)
         else:
-            self.window.addstr(leader)
             self.window.addstr(entry, self.default_color | weight)
 
     def clear(self):
