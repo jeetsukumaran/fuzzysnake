@@ -230,10 +230,10 @@ class CursesProgressTicker(object):
         curses.use_default_colors()
         curses.noecho()
         self.window.nodelay(1)
-        try:
-            curses.curs_set(0)
-        except curses.error:
-            pass
+        # try:
+        #     curses.curs_set(0)
+        # except curses.error:
+        #     pass
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
