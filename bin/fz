@@ -113,21 +113,30 @@ def truncate_middle(line, length=70):
     return "%s...%s" % (line[:start], line[end:])
 
 def execute_command(cmd,
-        arg=None,
-        substitute_token="{}"):
+        args=None,
+        substitute_token="{}",
+        verbose=True):
     # Note: cannot use subprocess here due to parent process (this program)
     # needing to exit before the subprocess is possibly done. `os.exec` and its
     # kin work: independent process is spawn and the current process is
     # replaced by it
     cmd = shlex.split(cmd)
-    if arg is not None:
+    if args is not None:
         substitution_made = False
+        prev_idx = 0
+        expanded_cmd = []
         for idx, token in enumerate(cmd):
             if token == substitute_token:
-                cmd[idx] = arg
+                expanded_cmd.extend(cmd[prev_idx:idx])
+                expanded_cmd.extend(args)
+                prev_idx = idx + 1
                 substitution_made = True
         if not substitution_made:
-            cmd.append(arg)
+            cmd.extend(args)
+        else:
+            cmd = expanded_cmd
+    if verbose:
+        sys.stderr.write("{}\n".format(" ".join(cmd)))
     try:
         os.execvp(cmd[0], cmd)
     except OSError:
@@ -152,13 +161,15 @@ class Entry(object):
             score,
             match_start,
             match_end,
-            whole_path_matching):
+            whole_path_matching,
+            is_selected=False):
         self.dirname = dirname
         self.filename = filename
         self.score = score
         self.whole_path_matching = whole_path_matching
         self._match_start_offset = match_start
         self._match_end_offset = match_end
+        self.is_selected = is_selected
 
     def _get_filepath(self):
         return os.path.join(self.dirname, self.filename)
@@ -292,18 +303,26 @@ class CursesPrinter(object):
         height, width = self.window_size()
         self.window.addstr(height-1, 0, q)
 
-    def print_item(self, idx, item, is_selected, query):
+    def print_item(self,
+            idx,
+            item,
+            is_current_row,
+            query):
         height, width = self.window_size()
         row = height - idx  - 2
         if row < 0:
             raise CursesPrinter.OutOfWindowBoundsException
         self.window.move(row, 0)
         entry = truncate_middle(item.filepath, width)
-        if is_selected:
-            leader = "> "
+        if item.is_selected:
+            leader = ">"
+        else:
+            leader = " "
+        if is_current_row:
+            leader += "> "
             weight = curses.A_REVERSE
         else:
-            leader = "  "
+            leader += "  "
             weight = curses.A_NORMAL
         if item.score > 0:
             left = entry[:item.match_start]
@@ -314,7 +333,8 @@ class CursesPrinter(object):
             self.window.addstr(main, self.match_color | weight)
             self.window.addstr(right, self.default_color | weight)
         else:
-            self.window.addstr(leader + entry, self.default_color | weight)
+            self.window.addstr(leader)
+            self.window.addstr(entry, self.default_color | weight)
 
     def clear(self):
         self.window.clear()
@@ -340,12 +360,14 @@ class Searcher(object):
             output,
             whitespace_separated_multiquery=False,
             whole_path_matching=False,
-            match_type="fuzzy"):
+            match_type="fuzzy",
+            multiselection_mode=True):
         self.ranker = ranker
         self.output = output
         self.whitespace_separated_multiquery = whitespace_separated_multiquery
         self.whole_path_matching = whole_path_matching
         self.match_type = match_type
+        self.multiselection_mode = multiselection_mode
 
     def _getch(self, blocking=True):
         if blocking:
@@ -403,6 +425,7 @@ class Searcher(object):
                 item.score = 0
                 item.match_start = 0
                 item.match_end = 0
+                item.is_selected = False
         return newHeap
 
     def _reset_search(self, current_query, current_heaps):
@@ -487,14 +510,20 @@ class Searcher(object):
                 # <CTRL-W>: Toggle whitespace-separated multi-search
                 self.whitespace_separated_multiquery = not self.whitespace_separated_multiquery
                 current_heaps = self._reset_search(current_query, current_heaps)
+            elif next_char == 9 and self.multiselection_mode:
+                current_heaps[-1][selected][1].is_selected = not current_heaps[-1][selected][1].is_selected
             else:
                 # Selected
                 if next_char == 10 or next_char == 13: # enter
-                    h = current_heaps[-1]
-                    for _ in range(selected):
-                        if not h: break
-                        heapq.heappop(h)
-                    return heapq.heappop(h)[1] if h else None
+                    if self.multiselection_mode:
+                        current_heaps[-1][selected][1].is_selected = True
+                        h = current_heaps[-1]
+                        return [item[1] for item in current_heaps[-1] if item[1].is_selected]
+                    else:
+                        for _ in range(selected):
+                            if not h: break
+                            heapq.heappop(h)
+                        return [heapq.heappop(h)[1]] if h else []
                 selected = 0
                 if next_char in (3, 7, 26, 28):
                     # <CTRL-C>, <CTRL-G>, <CTRL-Z>, etc.
@@ -832,29 +861,31 @@ class Runner(object):
         raise NotImplementedError()
 
     def run(self):
-        filename = self.find()
-        if filename is not None:
-            if args.action_type == "edit":
-                execute_command(self.editor_path, filename)
-            elif args.action_type == "open":
-                execute_command("open", filename)
-            elif args.action_type == "command":
-                execute_command(args.action_target, filename)
-            elif args.action_type == "print":
-                if not hasattr(args, "action_target") or args.action_target == "-":
-                    # sys.stdout = os.fdopen(1, 'w', 0) # restore original stdout
-                    # out = os.fdopen(1, 'w', 0) # restore original stdout
+        found = self.find()
+        if not found:
+            sys.exit(1) # raise error to let parent shell know nothing was selected
+        filepaths = [entry.filepath for entry in found]
+        if args.action_type == "edit":
+            execute_command(self.editor_path, filepaths)
+        elif args.action_type == "open":
+            execute_command("open", filepaths)
+        elif args.action_type == "command":
+            execute_command(args.action_target, filepaths)
+        elif args.action_type == "print":
+            if not hasattr(args, "action_target") or args.action_target == "-":
+                for filepath in filepaths:
                     sys.stdout.write(filename)
-                    # out.write("\n")
+                    sys.stdout.write("\n")
                     sys.exit(0)
-                else:
-                    out = open(os.path.expandvars(os.path.expanduser(args.action_target)), "w")
-                    with out:
-                        out.write(filename)
+            else:
+                out = open(os.path.expandvars(os.path.expanduser(args.action_target)), "w")
+                with out:
+                    for filepath in filepaths:
+                        out.write(filepath)
                         out.write("\n")
                 sys.exit(0)
-            else:
-                sys.exit("Unrecognized action: '{}'".format(args.action_type))
+        else:
+            sys.exit("Unrecognized action: '{}'".format(args.action_type))
 
 class DirRun(Runner):
 
@@ -926,15 +957,13 @@ class DirRun(Runner):
                 whitespace_separated_multiquery=self.args.whitespace_separated_multi_pattern,
                 whole_path_matching=self.args.whole_path_match,
                 match_type=self.args.match_type,
+                multiselection_mode=self.args.multiselection_mode,
                 )
         try:
             with SandboxedStdOut() as ssout:
                 found = s.run(items)
         except KeyboardInterrupt:
             sys.exit(1) # error so no process will execute anything on blank output
-        if found is not None:
-            found = os.path.join(found.dirname, found.filename)
-        # s.output.cleanup()
         return found
 
     def print_list(self,
@@ -1556,6 +1585,7 @@ class SetCustomCommandAction(argparse.Action):
 
 if __name__ == '__main__':
     args = build_arg_parser()
+    args.multiselection_mode = True
     runner = DirRun(args)
     if args.action_type == "list-and-exit":
         runner.print_list()
