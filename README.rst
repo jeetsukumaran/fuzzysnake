@@ -266,19 +266,23 @@ typically used when using `FuzzySnake` as part of a custom shell function or
 command, such as the "fuzzily-change-directory" command described below and
 given in the example '`fztricks.sh`" file.
 
-Multiple Selections
--------------------
+Selecting Multiple File and Directory Names
+-------------------------------------------
 If you type `<TAB>` on any entry, the item will be marked for selection, while
 typing `<TAB>` on a marked entry toggles the marking off. Thus, you can use
 `<TAB>` to mark one or more entries for `FuzzySnake` to act on when you finally
-hit `<ENTER>`, whether this is to open the selected entries in an editor for
-editing (default), print the names of the selected entries to the standard
-output ('`-1`' or '`--standard-output`'), executing an arbitrary command on the
-entries ('`-c`'/'`--execute-command`') and so on. Note that typing `<ENTER>` on
-an unmarked entry automatically adds that entry to the list of selected
-entries, and the specified action will be invoked on it as well as the other
-selected entries. If you type `<CTRL-U>` at any time, all marked items will be
-unmarked.
+hit `<ENTER>`, whether this action is to open the selected entries in an editor
+for editing (default), print the names of the selected entries to the standard
+output ('`--standard-output`'), execute an arbitrary command on the entries
+('`-c`'/'`--execute-command`') and so on. Note that typing `<ENTER>` on an
+unmarked entry automatically adds that entry to the list of selected entries,
+and the specified action will be invoked on it as well as the other selected
+entries. If you type `<CTRL-U>` at any time, all marked items will be unmarked,
+while, conversely, `<CTRL-A>` will mark all the entries. If you want to force
+`FuzzySnake` to only accept a single selection, you can invoke `FuzzySnake` in
+single-selection mode by using the '`-s`' or '`--single-selection`' flag::
+
+    $ fz -s
 
 Opening All the Files and Directories Found
 -------------------------------------------

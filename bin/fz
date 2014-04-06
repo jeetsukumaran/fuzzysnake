@@ -518,6 +518,11 @@ class Searcher(object):
                 if self.multiselection_mode:
                     for w, item in current_heaps[-1]:
                         item.is_selected = False
+            elif next_char == 1:
+                # <CTRL-A>: Mark all in multiselection mode; simply consume character otherwise
+                if self.multiselection_mode:
+                    for w, item in current_heaps[-1]:
+                        item.is_selected = True
             else:
                 # Selected
                 if next_char == 10 or next_char == 13: # enter
