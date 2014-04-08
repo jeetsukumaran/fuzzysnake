@@ -226,7 +226,7 @@ Higher numbers allow for deeper subdirectories to be visited::
 
 Simultaneous Multiple Queries
 -----------------------------
-Using the '`-w`' flag, multiple queries can be run simultaneously,
+Using the '`-m`' flag, multiple queries can be run simultaneously,
 with whitespace separating query terms: a query for "hello world" would
 result in two filters: "hello" and "world", requiring a file to match both.
 This can be useful for specifying part of a filename and then the file
