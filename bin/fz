@@ -527,7 +527,10 @@ class Searcher(object):
                 # Selected
                 if next_char == 10 or next_char == 13: # enter
                     if self.multiselection_mode:
-                        current_heaps[-1][selected][1].is_selected = True
+                        try:
+                            current_heaps[-1][selected][1].is_selected = True
+                        except IndexError:
+                            pass
                         h = current_heaps[-1]
                         return [item[1] for item in current_heaps[-1] if item[1].is_selected]
                     else:
