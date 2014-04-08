@@ -59,7 +59,7 @@ import shlex
 import itertools
 
 __prog__ = os.path.basename(__file__)
-__version__ = "2.2.2"
+__version__ = "2.2.3"
 __description__ = __doc__
 __author__ = 'Jeet Sukumaran'
 __copyright__ = 'Copyright (C) 2014 Jeet Sukumaran.'
