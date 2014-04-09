@@ -195,7 +195,6 @@ this approach to create custom, on-the-fly target types to filter for::
     $ fz -n '*.py' # same as 'fz --python'
     $ fz -n '*.log' -n '*.run.log'
 
-
 Excluding Files and Directories
 -------------------------------
 
@@ -273,6 +272,12 @@ can choose to have a custom command to be executed on it by passing the
     $ fz -c 'git add'
     $ fz -c 'python'
     $ fz -c 'open -a "Preview"'
+
+As another example, the following alias in your '`~/.bashrc`' allows you to use
+`FuzzySnake` to search for all tree files and open them in FigTree on OSX
+platforms::
+
+    alias fz-figtree='fz -n '\''*.tre??'\'' -n '\''*.nex'\'' -c '\''open -a "FigTree v1.3.1.app"'\'''
 
 More complex command compositions can be achieved by using the token '`{}`' as
 placeholders in the value you pass to the '`-c`'/'`--execute-command`' option.
