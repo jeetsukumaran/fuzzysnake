@@ -685,7 +685,7 @@ class DirectorySource(object):
                         for f in filenames:
                             if ((self.files_to_exclude is None or not self.files_to_exclude.match(f))
                                     and (self.target_filename_pattern is None or self.target_filename_pattern.match(f))
-                                    and (self.filter_for_glob_names is None or all(fnmatch.fnmatch(f, gf) for gf in self.filter_for_glob_names))
+                                    and (self.filter_for_glob_names is None or any(fnmatch.fnmatch(f, gf) for gf in self.filter_for_glob_names))
                                     ):
                                 # if self.paths_to_exclude is not None:
                                 #     # only do this if actual paths to exclude
