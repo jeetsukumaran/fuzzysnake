@@ -101,6 +101,23 @@ If you decide that you do *not* want to follow through with any actions at all,
 you can hit '`<ESC>`' or '`<CTRL-C>`' or '`<CTRL-G>`' at any time to cancel
 `FuzzySnake` and return to the shell.
 
+Setting the Default Editor
+--------------------------
+
+You can set the environmental variable '`$FUZZYSNAKE_EDITOR`' to specify the
+application that `FuzzySnake` should use when opening the file. Typically, this
+would be set in your shell configuration file so the setting would persist
+across all sessions. For example, you could add one of the following to your
+'`~/.bashrc`'::
+
+    export FUZZYSNAKE_EDITOR='vim'
+    export FUZZYSNAKE_EDITOR='sublime'
+    export FUZZYSNAKE_EDITOR='gedit'
+
+If the '`$FUZZYSNAKE_EDITOR`' environmental variable is not set, then the value
+of '`$EDITOR`' is used instead. If this is not set, then '`vim`' is used, which
+is what everybody should be using anyway.
+
 Customizing the Match Mode
 --------------------------
 If the fuzzy matching is too fuzzy for you, you can use strict literal matching
@@ -165,6 +182,19 @@ Special support is available for some domains::
     $ fz --phylogenetics
     $ fz --nexus
     $ fz --newick
+
+Restricting Searches by Glob Patterns
+-------------------------------------
+
+You can use the '`-n`' or '`--name-glob`' flag to restrict the list of entries
+to those with basenames that match one or more `glob
+<https://docs.python.org/3.4/library/fnmatch.html>`_ patterns.  You can use
+this approach to create custom, on-the-fly target types to filter for::
+
+    $ fz -n '*.log'
+    $ fz -n '*.py' # same as 'fz --python'
+    $ fz -n '*.log' -n '*.run.log'
+
 
 Excluding Files and Directories
 -------------------------------

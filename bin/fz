@@ -588,6 +588,7 @@ class DirectorySource(object):
             include_hidden=False,
             dirs_to_exclude=None,
             files_to_exclude=None,
+            filter_for_glob_names=None,
             max_recursion_depth=None):
         self.ignore_directories = ignore_directories
         self.ignore_files = ignore_files
@@ -616,6 +617,10 @@ class DirectorySource(object):
             self.files_to_exclude = None
         else:
             self.files_to_exclude = re.compile("(" + "|".join(files_to_exclude) + ")")
+        if filter_for_glob_names is None:
+            self.filter_for_glob_names = None
+        else:
+            self.filter_for_glob_names = filter_for_glob_names
         if DirectorySource.dot_dirs_ignore_pattern is None:
             dot_dirs_to_ignore = ["git", "svn", "hg"]
             dot_dirs_to_ignore = ["(.*/|)\.{}".format(d) for d in dot_dirs_to_ignore]
@@ -678,8 +683,10 @@ class DirectorySource(object):
                     names = []
                     if not self.ignore_files:
                         for f in filenames:
-                            if ( (self.files_to_exclude is None or not self.files_to_exclude.match(f))
-                                    and (self.target_filename_pattern is None or self.target_filename_pattern.match(f))):
+                            if ((self.files_to_exclude is None or not self.files_to_exclude.match(f))
+                                    and (self.target_filename_pattern is None or self.target_filename_pattern.match(f))
+                                    and (self.filter_for_glob_names is None or all(fnmatch.fnmatch(f, gf) for gf in self.filter_for_glob_names))
+                                    ):
                                 # if self.paths_to_exclude is not None:
                                 #     # only do this if actual paths to exclude
                                 #     ff = os.path.join(dirname, f)
@@ -690,8 +697,10 @@ class DirectorySource(object):
                                 names.append(f)
                     if not self.ignore_directories:
                         for candidate_dir in dirs:
-                            if (not DirectorySource.dot_dirs_ignore_pattern.match(candidate_dir)
-                                    and (self.dirs_to_exclude is None or not self.dirs_to_exclude.match(candidate_dir))):
+                            if ((not DirectorySource.dot_dirs_ignore_pattern.match(candidate_dir))
+                                    and (self.dirs_to_exclude is None or not self.dirs_to_exclude.match(candidate_dir))
+                                    and (self.filter_for_glob_names is None or all(fnmatch.fnmatch(candidate_dir, gf) for gf in self.filter_for_glob_names))
+                                    ):
                                 names.append(candidate_dir)
                     if self.respect_gitignores and '.gitignore' in filenames:
                         gif = GitIgnoreFilter(dirname, '.gitignore', self.git_exclude_filters)
@@ -954,6 +963,7 @@ class DirRun(Runner):
                         include_hidden=args.include_hidden,
                         dirs_to_exclude=args.dirs_to_exclude,
                         files_to_exclude=args.files_to_exclude,
+                        filter_for_glob_names=args.filter_for_glob_names,
                         max_recursion_depth=args.max_recursion_depth)
                 ds.fetch(path, items)
         return items
@@ -1507,30 +1517,44 @@ def build_arg_parser():
             const=r".*\.yaml$|.*\.yml$",
             help="YAML")
 
-    exclude_options_group = parser.add_argument_group("Exclusion Options")
-    exclude_options_group.add_argument(
+    custom_filtering_options_group = parser.add_argument_group("Custom Filtering Options")
+    custom_filtering_options_group.add_argument(
+            "-n", "--name-glob",
+            dest="filter_for_glob_names",
+            action="append",
+            metavar="GLOB-PATTERN",
+            help= "General glob pattern to match against basenames of "
+            " files and directories to be included (e.g., '*.log', 'res??[0-9].*')."
+            " Multiple patterns can be be specified by repeating the option,"
+            " e.g.: \"-n '*.log -n *.run.log -n *.screen.log'\","
+            " in which case the files or directories with basenames that"
+            " match *any* of the specified glob patterns will be included."
+            " Files and directories with names that do not match any of the"
+            " glob patterns will excluded, unless specifically included"
+            " through other target criteria.")
+    custom_filtering_options_group.add_argument(
             "-D", "--exclude-dir-patterns",
             action="append",
             metavar="PATTERN",
             dest="dirs_to_exclude",
             help="Regular expression patterns to be matched to directory "
             "names(s) to exclude. Multiple path patterns may be specified "
-            "by, e.g.: '-D path1 -D path2 -D path3'.")
-    exclude_options_group.add_argument(
+            "by repeating the option, e.g.: '-D path1 -D path2 -D path3'.")
+    custom_filtering_options_group.add_argument(
             "-F", "--exclude-file-patterns",
             action="append",
             metavar="PATTERN",
             dest="files_to_exclude",
             help="Regular expression patterns to be matched to filename(s) "
-            "to exclude. Multiple path patterns may be specified by, e.g.: "
-            "'-F path1 -F path2 -F path3'.")
-    exclude_options_group.add_argument(
+            "to exclude. Multiple path patterns may be specified by "
+            "repeating the option, e.g.: '-F path1 -F path2 -F path3'.")
+    custom_filtering_options_group.add_argument(
             "-a", "--include-hidden",
             action="store_true",
             default=False,
             help="Do not filter out hidden files and directories "
             "(by default, these are filtered out).")
-    exclude_options_group.add_argument(
+    custom_filtering_options_group.add_argument(
             "--include-gitignores",
             action="store_true",
             default=False,
