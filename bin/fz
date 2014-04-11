@@ -646,7 +646,7 @@ class DirectorySource(object):
                 continue
             pgi = os.path.join(dirname, '.gitignore')
             if os.path.isfile(pgi):
-                self.filters.append(GitIgnoreFilter(dirname, '.gitignore'))
+                self.filters.append((dirname, GitIgnoreFilter(dirname, '.gitignore')))
         self.filters.reverse()
         return self.filters
 
