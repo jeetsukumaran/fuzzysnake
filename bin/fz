@@ -309,13 +309,13 @@ class CursesPrinter(object):
         height, width = self.window_size()
         config = []
         if whitespace_separated_multiquery:
-            config.append("[^W] multi-term: yes")
+            config.append("[^T] multi-term: yes")
         else:
-            config.append("[^W] multi-term: no ")
+            config.append("[^T] multi-term: no ")
         if whole_path_matching:
-            config.append("[^D] whole-path match: yes")
+            config.append("[^D] directory match: yes")
         else:
-            config.append("[^D] whole-path match: no ")
+            config.append("[^D] directory match: no ")
         if match_type == "fuzzy":
             prompt = "? "
             config.append("[^R] expression: fuzzy  ")
@@ -539,8 +539,10 @@ class Searcher(object):
                 # <CTRL-L>: Literal or raw matching mode
                 self.match_type = "literal"
                 current_heaps = self._reset_search(current_query, current_heaps)
-            elif next_char == 23:
-                # <CTRL-W>: Toggle whitespace-separated multi-search
+            # elif next_char == 23:
+            #     # <CTRL-W>: Toggle whitespace-separated multi-search
+            elif next_char == 20:
+                # <CTRL-T>: Toggle whitespace-separated multi-term query
                 self.whitespace_separated_multiquery = not self.whitespace_separated_multiquery
                 current_heaps = self._reset_search(current_query, current_heaps)
             elif next_char == 9:
@@ -1083,13 +1085,14 @@ def build_arg_parser():
             "Use `<CTRL-D>` to toggle between full path and basename matching "
             "during the search.")
     query_options_section.add_argument(
-            "-m", "--whitespace-separated-multi-pattern",
+            "-t", "--multiple-search-terms",
             action="store_true",
-            help="Whitespace-separated multiple-queries: whitespaces in "
+            dest="whitespace_separated_multi_pattern",
+            help="Multiple term query: spaces in "
             "the query will be treated as separators for query terms, "
             "allowing multiple query terms to be used simultaneosly. "
             "If not specified, defaults to entire expression being "
-            "treated as single pattern. Use `<CTRL-W>` to toggle this "
+            "treated as single pattern. Use `<CTRL-T>` to toggle this "
             "option on and off during the search.")
 
     match_type_section = parser.add_argument_group("Match Mode Options",

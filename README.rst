@@ -253,13 +253,12 @@ Higher numbers allow for deeper subdirectories to be visited::
 
     $ fz -r2 ~/projects/archives
 
-Simultaneous Multiple Queries
------------------------------
-Using the '`-m`' flag, multiple queries can be run simultaneously,
-with whitespace separating query terms: a query for "hello world" would
-result in two filters: "hello" and "world", requiring a file to match both.
-This can be useful for specifying part of a filename and then the file
-extension.
+Simultaneous Multiple Terms
+---------------------------
+Using the '`-t`' flag, multiple terms can be matched simultaneously,
+with spaces separating query terms: a query for "hello world" would
+result in two filters: "hello" and "world", requiring a name to match both. You
+can toggle this option on and off during a live search by typing `<CTRL-T>`.
 
 Executing Custom Commands on the Selected File or Directory
 -----------------------------------------------------------
