@@ -281,27 +281,58 @@ class CursesPrinter(object):
         curses.init_pair(1, -1, -1)
         self.default_color = curses.color_pair(1)
 
-        # color for matched text
-        # curses.init_pair(2, -1, -1)
         ## TODO: allow configuration from environmental variable or rc file!
         curses.init_pair(2, curses.COLOR_GREEN, -1)
         self.match_color = curses.color_pair(2) | curses.A_UNDERLINE
+        curses.init_pair(3, curses.COLOR_MAGENTA, -1)
+        self.is_selected_color = curses.color_pair(3) | curses.A_BOLD
+        curses.init_pair(4, -1, -1)
+        self.current_row_color = curses.color_pair(4) # note: will be reversed below
+        curses.init_pair(5, curses.COLOR_MAGENTA, -1)
+        self.prompt_color = curses.color_pair(5) | curses.A_BOLD
+        curses.init_pair(6, -1, -1)
+        self.status_bar_color = curses.color_pair(6) | curses.A_BOLD | curses.A_REVERSE
+
+        # positions
+        self.query_row_offset = 2
+        self.first_item_row_offset = self.query_row_offset + 1
 
     def cleanup(self):
         curses.echo()
         curses.endwin()
 
-    def print_query(self, query, match_type):
+    def print_query(self,
+            query,
+            match_type,
+            whitespace_separated_multiquery,
+            whole_path_matching):
+        height, width = self.window_size()
+        config = []
+        if whitespace_separated_multiquery:
+            config.append("[^W] multi-term ")
+        else:
+            config.append("[^W] single-term")
+        if whole_path_matching:
+            config.append("[^D] whole path match")
+        else:
+            config.append("[^D] basename match  ")
         if match_type == "fuzzy":
             prompt = "? "
+            config.append("[^R] fuzzy expression  ")
         elif match_type == "literal":
             prompt = "= "
+            config.append("[^R] literal expression")
         elif match_type == "regexp":
             prompt = "% "
+            config.append("[^R] regular expression")
         q = prompt + query
         self.querylen = len(q)
-        height, width = self.window_size()
-        self.window.addstr(height-1, 0, q)
+        config = " ".join(config)
+        config = config.ljust(width-1)
+        self.window.move(height - 1, 0)
+        self.window.addstr(config, self.status_bar_color)
+        self.window.move(height - self.query_row_offset, 0)
+        self.window.addstr(q, self.prompt_color)
 
     def print_item(self,
             idx,
@@ -309,19 +340,22 @@ class CursesPrinter(object):
             is_current_row,
             query):
         height, width = self.window_size()
-        row = height - idx  - 2
+        row = height - idx  - self.first_item_row_offset
         if row < 0:
             raise CursesPrinter.OutOfWindowBoundsException
         self.window.move(row, 0)
         entry = truncate_middle(item.filepath, width)
         weight = curses.A_NORMAL
+        color = self.default_color
         if item.is_selected:
-            self.window.addstr(">", self.default_color | curses.A_BOLD)
-            weight = curses.A_BOLD
+            self.window.addstr("#", self.is_selected_color | curses.A_BOLD)
+            color = self.is_selected_color
         else:
             self.window.addstr(" ", self.default_color)
         if is_current_row:
             self.window.addstr("> ", self.default_color)
+            color = self.current_row_color
+            # to reverse all parts of the line (included matched)
             weight = curses.A_REVERSE
         else:
             self.window.addstr("  ", self.default_color)
@@ -329,18 +363,18 @@ class CursesPrinter(object):
             left = entry[:item.match_start]
             main = entry[item.match_start:item.match_end]
             right = entry[item.match_end:]
-            self.window.addstr(left, self.default_color | weight)
+            self.window.addstr(left, color | weight)
             self.window.addstr(main, self.match_color | weight)
-            self.window.addstr(right, self.default_color | weight)
+            self.window.addstr(right, color | weight)
         else:
-            self.window.addstr(entry, self.default_color | weight)
+            self.window.addstr(entry, color | weight)
 
     def clear(self):
         self.window.clear()
 
     def flush(self):
         height, width = self.window_size()
-        self.window.move(height-1, self.querylen)
+        self.window.move(height - self.query_row_offset, self.querylen)
         self.window.refresh()
 
     def move(self, y, x):
@@ -558,7 +592,11 @@ class Searcher(object):
 
     def _echo(self, current_query, heap, selected):
         self.output.clear()
-        self.output.print_query(current_query, self.match_type)
+        self.output.print_query(
+                query=current_query,
+                match_type=self.match_type,
+                whitespace_separated_multiquery=self.whitespace_separated_multiquery,
+                whole_path_matching=self.whole_path_matching)
         for i, (score, item) in enumerate(heap):
             try:
                 self.output.print_item(i, item, i==selected, current_query)
