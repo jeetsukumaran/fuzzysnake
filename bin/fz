@@ -309,26 +309,26 @@ class CursesPrinter(object):
         height, width = self.window_size()
         config = []
         if whitespace_separated_multiquery:
-            config.append("[^W] multi-term ")
+            config.append("[^W] multi-term: yes")
         else:
-            config.append("[^W] single-term")
+            config.append("[^W] multi-term: no ")
         if whole_path_matching:
-            config.append("[^D] whole path match")
+            config.append("[^D] whole-path match: yes")
         else:
-            config.append("[^D] basename match  ")
+            config.append("[^D] whole-path match: no ")
         if match_type == "fuzzy":
             prompt = "? "
-            config.append("[^R] fuzzy expression  ")
+            config.append("[^R] expression: fuzzy  ")
         elif match_type == "literal":
             prompt = "= "
-            config.append("[^R] literal expression")
+            config.append("[^R] expression: literal")
         elif match_type == "regexp":
             prompt = "% "
-            config.append("[^R] regular expression")
+            config.append("[^R] expression: regular")
         q = prompt + query
         self.querylen = len(q)
         config = " ".join(config)
-        config = config.ljust(width-1)
+        config = config.ljust(width-1)[:width-1]
         self.window.move(height - 1, 0)
         self.window.addstr(config, self.status_bar_color)
         self.window.move(height - self.query_row_offset, 0)
