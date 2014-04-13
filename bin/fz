@@ -525,6 +525,7 @@ class Searcher(object):
                     self.match_type = "literal"
                 else:
                     self.match_type = "fuzzy"
+                current_heaps = self._reset_search(current_query, current_heaps)
             elif next_char == 6:
                 # <CTRL-F>: Fuzzy-matching mode
                 self.match_type = "fuzzy"
