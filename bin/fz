@@ -202,29 +202,39 @@ class Entry(object):
 
 class SandboxedStdOut(object):
 
+    def __init__(self, suppress_window=False):
+        self.suppress_window = suppress_window
+
     def __enter__(self):
         # clone stdout: this allows us to open
         # the curses window in a subshell and
         # print the result to the "real" stdout
         # on exit
+        if self.suppress_window:
+            return
         self.prev_stdout_fd = os.dup(sys.stdout.fileno())
         self.new_stdout_clone = os.open("/dev/tty", os.O_WRONLY)
         os.dup2(self.new_stdout_clone, sys.stdout.fileno()) # 1
         self.prev_stdout = sys.stdout
 
     def __exit__(self, exc_type, exc_value, traceback):
+        if self.suppress_window:
+            return
         os.dup2(self.prev_stdout_fd, self.prev_stdout.fileno())
         self.stdout = self.prev_stdout
         # os.dup2(self.old_stdout, 1)
 
 class CursesProgressTicker(object):
 
-    def __init__(self):
+    def __init__(self, suppress_window=False):
+        self.suppress_window = suppress_window
         self.window = None
         self.current_step = 0
         self.spinner_cycle = itertools.cycle(["|", "/", "-", "\\", "-",])
 
     def __enter__(self):
+        if self.suppress_window:
+            return self
         self.window = curses.initscr()
         curses.start_color()
         curses.use_default_colors()
@@ -237,14 +247,20 @@ class CursesProgressTicker(object):
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
+        if self.suppress_window:
+            return
         self.cleanup()
 
     def cleanup(self):
+        if self.suppress_window:
+            return
         self.window.nodelay(0)
         curses.echo()
         curses.endwin()
 
     def check_for_cancel(self):
+        if self.suppress_window:
+            return
         self.window.nodelay(1)
         ch = self.window.getch()
         if ch == 27:
@@ -254,6 +270,8 @@ class CursesProgressTicker(object):
         self.window.nodelay(0)
 
     def update(self, message):
+        if self.suppress_window:
+            return
         self.current_step += 1
         height, width = get_screen_dimensions()
         self.window.move(height-1, 0)
@@ -688,15 +706,18 @@ class DirectorySource(object):
         self.filters.reverse()
         return self.filters
 
-    def fetch(self, start_dir=".", results=None):
+    def fetch(self,
+            start_dir=".",
+            results=None,
+            suppress_progress_feedback=False):
         self.filters = []
         self.git_exclude_filters = []
         if self.respect_gitignores:
             self.find_parent_gis(start_dir)
         if results is None:
             results = []
-        with SandboxedStdOut() as sb:
-            with CursesProgressTicker() as progress:
+        with SandboxedStdOut(suppress_window=suppress_progress_feedback) as sb:
+            with CursesProgressTicker(suppress_window=suppress_progress_feedback) as progress:
                 total_items_scanned = 0
                 for search_idx, (dirname, dirs, filenames) in enumerate(walk(start_dir)):
                     progress.check_for_cancel()
@@ -1009,7 +1030,9 @@ class DirRun(Runner):
                         files_to_exclude=args.files_to_exclude,
                         filter_for_glob_names=args.filter_for_glob_names,
                         max_recursion_depth=args.max_recursion_depth)
-                ds.fetch(path, items)
+                ds.fetch(start_dir=path,
+                        results=items,
+                        suppress_progress_feedback=args.no_progress_window)
         return items
 
     def find(self):
@@ -1040,7 +1063,10 @@ class DirRun(Runner):
             mirror_to_stderr=False):
         if out is None:
             out = sys.stdout
-        items = self.fetch()
+        try:
+            items = self.fetch()
+        except KeyboardInterrupt:
+            sys.exit(1) # error so no process will execute anything on blank output
         for item in items:
             item_str = "{}\n".format(item.filepath)
             out.write(item_str)
@@ -1082,6 +1108,11 @@ def build_arg_parser():
             action="store_true",
             default=False,
             help="Run as silently as possible, e.g. do not echo commands being executed.")
+    search_options_section.add_argument(
+            "--no-progress-window",
+            action="store_true",
+            default=False,
+            help="Do not show progress of filesystem scanning.")
 
     query_options_section = parser.add_argument_group("Query Options")
     query_options_section.add_argument(

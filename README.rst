@@ -417,6 +417,54 @@ These enhancements include:
 
     cd $(fz --stdout --single-selection -d || echo ".")
 
+Using `FuzzySnake` as the File Discovery Engine for CtrlP
+---------------------------------------------------------
+
+The following line your '`~/.vimrc`' will make `FuzzySnake` the default file
+discovery engine when `CtrlP <https://github.com/kien/ctrlp.vim>`_ is invoked
+in `Vim <http://www.vim.org>`_)::
+
+    let g:ctrlp_user_command = "fz -L --no-progress-window %s"
+
+This probably will not result in any faster file discovery as such, but it does
+allow you to use the pre-filtering of `FuzzySnake` to exclude, for
+example, files in your '`.gitignore`' etc.
+
+Of course, this behavior can also be achieved using native CtrlP protocols::
+
+    let g:ctrlp_user_command = ['.git', 'cd %s && git ls-files']
+
+Perhaps more useful would be custom commands that more fully leverage the power
+of `FuzzySnake`::
+
+    function! s:_ctrlp_cpp_files()
+        if exists("g:ctrlp_user_command")
+            let l:old_user_command = g:ctrlp_user_command
+        endif
+        let g:ctrlp_user_command = 'fz -L --no-progress-window --cpp %s'
+        :CtrlP
+        if exists("l:old_user_command")
+            let g:ctrlp_user_command = l:old_user_command
+        else
+            unlet g:ctrlp_user_command
+        endif
+    endfunction
+    command! CtrlPCpp :call <SID>_ctrlp_cpp_files()
+
+    function! s:_ctrlp_python_files()
+        if exists("g:ctrlp_user_command")
+            let l:old_user_command = g:ctrlp_user_command
+        endif
+        let g:ctrlp_user_command = 'fz -L --no-progress-window --python %s'
+        :CtrlP
+        if exists("l:old_user_command")
+            let g:ctrlp_user_command = l:old_user_command
+        else
+            unlet g:ctrlp_user_command
+        endif
+    endfunction
+    command! CtrlPPython :call <SID>_ctrlp_python_files()
+
 Acknowledgements
 ----------------
 
