@@ -259,23 +259,29 @@ Higher numbers allow for deeper subdirectories to be visited::
 
 Simultaneously and Independently Matching Multiple Terms ('`AND`'-ing)
 ----------------------------------------------------------------------
-During the live search, you can specify multiple query terms, with each
-separated from the next by the '`;`' token. A multiple-term query will match
-each term simultaneously but separately. So, for example, if you type in::
+During the live search, you can specify multiple query terms, with terms
+separated from each other by a '`;`' token character. A multiple-term query
+will match each term simultaneously but separately. So, for example, if you
+type in::
 
     foo;bar;baz
 
 then names have to match "foo" *and* "bar" *and* "baz" independently (and in
 any order) to be filtered through.
 
-Thus, '`;`' can be seen as an '`AND`' operator.  The choice of '`;`' as instead
+Thus, '`;`' can be seen as an '`AND`' operator.  The choice of '`;`' instead
 of what might perhaps be the more obvious '`&`' is driven by the fact that this
 is what `CtrlP <https://github.com/kien/ctrlp.vim>`_ for `Vim
-<http://www.vim.org>`_) uses by default. You can specify an alternate token to
-be used as term-delimter by using the '`-t`' or '`--term-separator`' flag when
+<http://www.vim.org>`_ uses by default. You can specify an alternate token to
+be used as term-delimiter by using the '`-t`' or '`--term-separator`' flag when
 invoking `FuzzySnake`. So, for example, to use '`&`', you could type::
 
     $ fz -t '&'
+
+In which case, a query for a filename that fuzzily matches "foo" and "bar" and
+"baz" will be entered as::
+
+    foo&bar&baz
 
 Executing Custom Commands on the Selected File or Directory
 -----------------------------------------------------------
