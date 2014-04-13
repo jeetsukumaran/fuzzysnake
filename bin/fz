@@ -163,8 +163,8 @@ class Entry(object):
             match_end,
             whole_path_matching,
             is_selected=False):
-        self.dirname = dirname
-        self.filename = filename
+        self.dirname = os.path.normpath(dirname)
+        self.filename = os.path.normpath(filename)
         self.score = score
         self.whole_path_matching = whole_path_matching
         self._match_start_offset = match_start
@@ -699,6 +699,7 @@ class DirectorySource(object):
                 total_items_scanned = 0
                 for search_idx, (dirname, dirs, filenames) in enumerate(walk(start_dir)):
                     progress.check_for_cancel()
+                    dirname = os.path.normpath(dirname)
                     total_items_scanned += (1 + len(dirs) + len(filenames))
                     if search_idx % 100 == 0:
                         progress.update("Scanning: found {} out of {} names".format(len(results), total_items_scanned))
@@ -720,6 +721,7 @@ class DirectorySource(object):
                     names = []
                     if not self.ignore_files:
                         for f in filenames:
+                            f = os.path.normpath(f)
                             if ((self.files_to_exclude is None or not self.files_to_exclude.match(f))
                                     and (self.target_filename_pattern is None or self.target_filename_pattern.match(f))
                                     and (self.filter_for_glob_names is None or any(fnmatch.fnmatch(f, gf) for gf in self.filter_for_glob_names))
@@ -734,6 +736,7 @@ class DirectorySource(object):
                                 names.append(f)
                     if not self.ignore_directories:
                         for candidate_dir in dirs:
+                            candidate_dir = os.path.normpath(candidate_dir)
                             if ((not DirectorySource.dot_dirs_ignore_pattern.match(candidate_dir))
                                     and (self.dirs_to_exclude is None or not self.dirs_to_exclude.match(candidate_dir))
                                     and (self.filter_for_glob_names is None or all(fnmatch.fnmatch(candidate_dir, gf) for gf in self.filter_for_glob_names))
