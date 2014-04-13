@@ -59,7 +59,7 @@ import shlex
 import itertools
 
 __prog__ = os.path.basename(__file__)
-__version__ = "2.2.3"
+__version__ = "3.0.0"
 __description__ = __doc__
 __author__ = 'Jeet Sukumaran'
 __copyright__ = 'Copyright (C) 2014 Jeet Sukumaran.'
@@ -304,18 +304,9 @@ class CursesPrinter(object):
     def print_query(self,
             query,
             match_type,
-            whitespace_separated_multiquery,
             whole_path_matching):
         height, width = self.window_size()
         config = []
-        if whitespace_separated_multiquery:
-            config.append("[^T] multi-term: yes")
-        else:
-            config.append("[^T] multi-term: no ")
-        if whole_path_matching:
-            config.append("[^D] directory match: yes")
-        else:
-            config.append("[^D] directory match: no ")
         if match_type == "fuzzy":
             prompt = "? "
             config.append("[^R] expression: fuzzy  ")
@@ -325,6 +316,10 @@ class CursesPrinter(object):
         elif match_type == "regexp":
             prompt = "% "
             config.append("[^R] expression: regular")
+        if whole_path_matching:
+            config.append("[^D] directory match: yes")
+        else:
+            config.append("[^D] directory match: no ")
         q = prompt + query
         self.querylen = len(q)
         config = " ".join(config)
@@ -394,13 +389,13 @@ class Searcher(object):
     def __init__(self,
             ranker,
             output,
-            whitespace_separated_multiquery=False,
+            term_separator=False,
             whole_path_matching=False,
             match_type="fuzzy",
             multiselection_mode=True):
         self.ranker = ranker
         self.output = output
-        self.whitespace_separated_multiquery = whitespace_separated_multiquery
+        self.term_separator = term_separator
         self.whole_path_matching = whole_path_matching
         self.match_type = match_type
         self.multiselection_mode = multiselection_mode
@@ -443,7 +438,7 @@ class Searcher(object):
     def _new_heap(self, query, cur_heap):
         newHeap = []
         ranker = self.ranker(query=query,
-                whitespace_separated_multiquery=self.whitespace_separated_multiquery,
+                term_separator=self.term_separator,
                 whole_path_matching=self.whole_path_matching,
                 match_type=self.match_type)
         for w, item in cur_heap:
@@ -542,12 +537,12 @@ class Searcher(object):
                 # <CTRL-L>: Literal or raw matching mode
                 self.match_type = "literal"
                 current_heaps = self._reset_search(current_query, current_heaps)
-            # elif next_char == 23:
-            #     # <CTRL-W>: Toggle whitespace-separated multi-search
-            elif next_char == 20:
-                # <CTRL-T>: Toggle whitespace-separated multi-term query
-                self.whitespace_separated_multiquery = not self.whitespace_separated_multiquery
-                current_heaps = self._reset_search(current_query, current_heaps)
+            # # elif next_char == 23:
+            # #     # <CTRL-W>: Toggle whitespace-separated multi-search
+            # elif next_char == 20:
+            #     # <CTRL-T>: Toggle whitespace-separated multi-term query
+            #     self.whitespace_separated_multiquery = not self.whitespace_separated_multiquery
+            #     current_heaps = self._reset_search(current_query, current_heaps)
             elif next_char == 9:
                 # <TAB>: toggle in multiselection mode; simply consume character otherwise
                 if self.multiselection_mode:
@@ -600,7 +595,6 @@ class Searcher(object):
         self.output.print_query(
                 query=current_query,
                 match_type=self.match_type,
-                whitespace_separated_multiquery=self.whitespace_separated_multiquery,
                 whole_path_matching=self.whole_path_matching)
         for i, (score, item) in enumerate(heap):
             try:
@@ -886,15 +880,15 @@ class FuzzyRanker(object):
 
     def __init__(self,
             query,
-            whitespace_separated_multiquery=False,
+            term_separator=False,
             whole_path_matching=False,
             match_type="fuzzy"):
-        self.whitespace_separated_multiquery = whitespace_separated_multiquery
+        self.term_separator = term_separator
         self.whole_path_matching = whole_path_matching
         self.weight_f = lambda f: f.dirname.count(os.sep) ** 0.5
         self.qs = query.lower()
-        if self.whitespace_separated_multiquery:
-            self.qs = self.qs.split()
+        if self.term_separator:
+            self.qs = self.qs.split(self.term_separator)
         else:
             self.qs = [self.qs]
         self.match_type = match_type
@@ -1022,7 +1016,7 @@ class DirRun(Runner):
         ranker = FuzzyRanker
         s = Searcher(ranker=ranker,
                 output=CursesPrinter(),
-                whitespace_separated_multiquery=self.args.whitespace_separated_multi_pattern,
+                term_separator=self.args.term_separator,
                 whole_path_matching=self.args.whole_path_match,
                 match_type=self.args.match_type,
                 multiselection_mode=self.args.multiselection_mode,
@@ -1088,16 +1082,17 @@ def build_arg_parser():
             "Use `<CTRL-D>` to toggle between full path and basename matching "
             "during the search.")
     query_options_section.add_argument(
-            "-t", "--multiple-search-terms",
-            action="store_true",
-            dest="whitespace_separated_multi_pattern",
-            help="Multiple term query: spaces in "
-            "the query will be treated as separators for query terms, "
-            "allowing multiple query terms to be used simultaneosly. "
-            "If not specified, defaults to entire expression being "
-            "treated as single pattern. Use `<CTRL-T>` to toggle this "
-            "option on and off during the search.")
-
+            "-t", "--term-separator",
+            dest="term_separator",
+            default=";",
+            help=
+            "Specify the token to be used to separate multiple search "
+            "terms in the query expression. Defaults to '%(default)s'. "
+            "If multiple search terms are specified, a name has to "
+            "independently match every search term. Thus, if '%(default)s' "
+            "is given as the separator token, and 'foo%(default)sbar' is "
+            "typed as a query pattern, then names have match both 'foo'"
+            "AND 'bar'.")
     match_type_section = parser.add_argument_group("Match Mode Options",
             "The following flags set the initial matching mode to be used. "
             "You can cycle through match modes during a live search "
