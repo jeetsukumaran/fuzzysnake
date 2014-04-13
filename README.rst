@@ -195,6 +195,10 @@ this approach to create custom, on-the-fly target types to filter for::
     $ fz -n '*.py' # same as 'fz --python'
     $ fz -n '*.log' -n '*.run.log'
 
+For example, to select from a list of available tests to run in a Python project::
+
+    $ fz -c 'python -m unittest' -n 'test_*.py'
+
 Excluding Files and Directories
 -------------------------------
 

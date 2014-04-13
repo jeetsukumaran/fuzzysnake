@@ -115,7 +115,7 @@ def truncate_middle(line, length=70):
 def execute_command(cmd,
         args=None,
         substitute_token="{}",
-        verbose=False):
+        verbose=True):
     # Note: cannot use subprocess here due to parent process (this program)
     # needing to exit before the subprocess is possibly done. `os.exec` and its
     # kin work: independent process is spawn and the current process is
@@ -172,7 +172,7 @@ class Entry(object):
         self.is_selected = is_selected
 
     def _get_filepath(self):
-        return os.path.join(self.dirname, self.filename)
+        return os.path.normpath(os.path.join(self.dirname, self.filename))
     filepath = property(_get_filepath)
 
     def _start_of_basename_in_filepath(self):
@@ -927,16 +927,19 @@ class Runner(object):
             sys.exit(1) # raise error to let parent shell know nothing was selected
         filepaths = [entry.filepath for entry in found]
         if args.action_type == "edit":
-            execute_command(self.editor_path, filepaths)
+            execute_command(self.editor_path, filepaths, verbose=not self.args.quiet)
         elif args.action_type == "open":
-            execute_command("open", filepaths)
+            execute_command("open", filepaths, verbose=not self.args.quiet)
         elif args.action_type == "command":
-            execute_command(args.action_target, filepaths)
+            execute_command(args.action_target, filepaths, verbose=not self.args.quiet)
         elif args.action_type == "print":
             if not hasattr(args, "action_target") or args.action_target == "-":
                 for filepath in filepaths:
                     sys.stdout.write(filepath)
                     sys.stdout.write("\n")
+                    if not self.args.quiet:
+                        sys.stderr.write(filepath)
+                        sys.stderr.write("\n")
                 sys.exit(0)
             else:
                 out = open(os.path.expandvars(os.path.expanduser(args.action_target)), "w")
@@ -1070,6 +1073,11 @@ def build_arg_parser():
             dest="multiselection_mode",
             default=True,
             help="Do not allow multiple entries to be marked/unmarked for selection using <TAB>.")
+    search_options_section.add_argument(
+            "-q", "--quiet",
+            action="store_true",
+            default=False,
+            help="Run as silently as possible, e.g. do not echo commands being executed.")
 
     query_options_section = parser.add_argument_group("Query Options")
     query_options_section.add_argument(
