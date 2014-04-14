@@ -163,8 +163,8 @@ class Entry(object):
             match_end,
             whole_path_matching,
             is_selected=False):
-        self.dirname = os.path.normpath(dirname)
-        self.filename = os.path.normpath(filename)
+        self._dirname = os.path.normpath(dirname)
+        self._filename = os.path.normpath(filename)
         # self.dirname = dirname
         # self.filename = filename
         self.score = score
@@ -173,19 +173,47 @@ class Entry(object):
         self._match_end_offset = match_end
         self.is_selected = is_selected
 
+    def _get_match_target(self):
+        if self.whole_path_matching:
+            return self.filepath
+        else:
+            return self.filename
+    match_target = property(_get_match_target)
+
+    def _get_display_name(self):
+        return self.filepath
+    display_name = property(_get_display_name)
+
+    def _get_dirname(self):
+        return self._dirname
+    def _set_dirname(self, name):
+        if name:
+            self._dirname = os.path.normpath(name)
+        else:
+            self._dirname = ""
+    dirname = property(_get_dirname, _set_dirname)
+
+    def _get_filename(self):
+        return self._filename
+    def _set_filename(self, name):
+        if name:
+            self._filename = os.path.normpath(name)
+        else:
+            self._filename = ""
+    filename = property(_get_filename, _set_filename)
+
     def _get_filepath(self):
-        return os.path.normpath(os.path.join(self.dirname, self.filename))
+        return os.path.normpath(os.path.join(self._dirname, self._filename))
     filepath = property(_get_filepath)
 
     def _start_of_basename_in_filepath(self):
-        return len(os.path.join(self.dirname, ""))
-    start_of_basename_in_filepath = property(_start_of_basename_in_filepath)
+        return len(os.path.normpath(os.path.join(self._dirname, "x"))) - 1
 
     def _get_match_start(self):
         if self.whole_path_matching:
             return self._match_start_offset
         else:
-            return self.start_of_basename_in_filepath + self._match_start_offset
+            return self._start_of_basename_in_filepath() + self._match_start_offset
     def _set_match_start(self, v):
         self._match_start_offset = v
     match_start = property(_get_match_start, _set_match_start)
@@ -194,7 +222,7 @@ class Entry(object):
         if self.whole_path_matching:
             return self._match_end_offset
         else:
-            return self.start_of_basename_in_filepath + self._match_end_offset
+            return self._start_of_basename_in_filepath() + self._match_end_offset
     def _set_match_end(self, v):
         self._match_end_offset = v
     match_end = property(_get_match_end, _set_match_end)
@@ -359,7 +387,7 @@ class CursesPrinter(object):
         if row < 0:
             raise CursesPrinter.OutOfWindowBoundsException
         self.window.move(row, 0)
-        entry = truncate_middle(item.filepath, width-3) # account for leader
+        display_name = truncate_middle(item.display_name, width-3) # account for leader
         weight = curses.A_NORMAL
         color = self.default_color
         if item.is_selected:
@@ -375,14 +403,14 @@ class CursesPrinter(object):
         else:
             self.window.addstr("  ", self.default_color)
         if item.score > 0:
-            left = entry[:item.match_start]
-            main = entry[item.match_start:item.match_end]
-            right = entry[item.match_end:]
+            left = display_name[:item.match_start]
+            main = display_name[item.match_start:item.match_end]
+            right = display_name[item.match_end:]
             self.window.addstr(left, color | weight)
             self.window.addstr(main, self.match_color | weight)
             self.window.addstr(right, color | weight)
         else:
-            self.window.addstr(entry, color | weight)
+            self.window.addstr(display_name, color | weight)
 
     def clear(self):
         self.window.clear()
@@ -919,10 +947,11 @@ class FuzzyRanker(object):
         self.match_type = match_type
 
     def rank(self, item):
-        if self.whole_path_matching:
-            part = item.filepath
-        else:
-            part = item.filename
+        # if self.whole_path_matching:
+        #     part = item.filepath
+        # else:
+        #     part = item.filename
+        part = item.match_target
         agg_score = 0.0
         match_start = len(part)
         match_end = -1
