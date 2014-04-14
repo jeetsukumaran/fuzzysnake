@@ -134,7 +134,7 @@ def execute_command(cmd,
         if not substitution_made:
             cmd.extend(args)
         else:
-            cmd = expanded_cmd
+            cmd = expanded_cmd + cmd[prev_idx:]
     if verbose:
         sys.stderr.write("{}\n".format(" ".join(cmd)))
     try:
