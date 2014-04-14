@@ -357,7 +357,7 @@ class CursesPrinter(object):
         if row < 0:
             raise CursesPrinter.OutOfWindowBoundsException
         self.window.move(row, 0)
-        entry = truncate_middle(item.filepath, width)
+        entry = truncate_middle(item.filepath, width-3) # account for leader
         weight = curses.A_NORMAL
         color = self.default_color
         if item.is_selected:
