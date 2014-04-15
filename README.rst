@@ -409,7 +409,7 @@ These enhancements include:
 - A new command, `fd`, to change to a directory selected via `FuzzySnake`::
 
     function fd() {
-        DESTDIR=$(fz --stdout --single-selection -d)
+        DESTDIR=$(fz --stdout --single-selection -d $@ || echo "")
         if [ -n "$DESTDIR" ]
         then
             echo $(_get_abs_path "${DESTDIR}")
