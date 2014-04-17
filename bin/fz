@@ -437,7 +437,7 @@ class Searcher(object):
     def __init__(self,
             ranker,
             output,
-            term_separator=False,
+            term_separator=';',
             whole_path_matching=False,
             match_type="fuzzy",
             multiselection_mode=True):
@@ -933,7 +933,7 @@ class FuzzyRanker(object):
 
     def __init__(self,
             query,
-            term_separator=False,
+            term_separator=';',
             whole_path_matching=False,
             match_type="fuzzy"):
         self.term_separator = term_separator
