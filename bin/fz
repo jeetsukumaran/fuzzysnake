@@ -1059,6 +1059,7 @@ class DirRun(Runner):
                         files_to_exclude=args.files_to_exclude,
                         filter_for_glob_names=args.filter_for_glob_names,
                         max_recursion_depth=args.max_recursion_depth)
+                path = os.path.expandvars(os.path.expanduser(path))
                 ds.fetch(start_dir=path,
                         results=items,
                         suppress_progress_feedback=args.no_progress_window)
