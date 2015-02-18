@@ -565,7 +565,6 @@ class Searcher(object):
                 elif next_char == 67:
                     # <RIGHT>
                     children = self._get_selected(
-                            heapq=heapq,
                             current_heaps=current_heaps,
                             selected=selected)
                     raise Searcher.MoveToChildException(children)
@@ -627,7 +626,6 @@ class Searcher(object):
                 # Selected
                 if next_char == 10 or next_char == 13: # enter
                     return self._get_selected(
-                            heapq=heapq,
                             current_heaps=current_heaps,
                             selected=selected)
                 selected = 0
@@ -647,14 +645,13 @@ class Searcher(object):
                         pass
             self._echo(current_query, current_heaps[-1], selected)
 
-    def _get_selected(self, heapq, current_heaps, selected):
+    def _get_selected(self, current_heaps, selected):
         if self.multiselection_mode:
             return self._get_multi_selected(
                     current_heaps=current_heaps,
                     selected=selected)
         else:
             return self._get_single_selected(
-                    heapq=heapq,
                     current_heaps=current_heaps,
                     selected=selected)
 
@@ -666,10 +663,11 @@ class Searcher(object):
         h = current_heaps[-1]
         return [item[1] for item in current_heaps[-1] if item[1].is_selected]
 
-    def _get_single_selected(self, heapq, current_heaps, selected):
+    def _get_single_selected(self, current_heaps, selected):
         h = current_heaps[-1]
-        for _ in range(selected):
-            if not h: break
+        for idx in range(len(h) - selected + 1):
+            if not h:
+                break
             heapq.heappop(h)
         return [heapq.heappop(h)[1]] if h else []
 
