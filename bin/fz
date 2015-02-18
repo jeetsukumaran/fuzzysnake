@@ -270,7 +270,7 @@ class CursesProgressTicker(object):
         curses.use_default_colors()
         curses.noecho()
         self.window.nodelay(1)
-        curses.init_pair(8, curses.COLOR_YELLOW, curses.COLOR_BLUE)
+        curses.init_pair(8, curses.COLOR_YELLOW, curses.COLOR_BLACK)
         self.spinner_color = curses.color_pair(8) | curses.A_BOLD | curses.A_REVERSE
         # try:
         #     curses.curs_set(0)
@@ -351,7 +351,7 @@ class CursesPrinter(object):
         # curses.init_pair(6, curses.COLOR_GREEN, -1)
         # self.status_bar_color = curses.color_pair(6) | curses.A_BOLD | curses.A_REVERSE
 
-        curses.init_pair(6, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        curses.init_pair(6, curses.COLOR_GREEN, curses.COLOR_BLACK)
         self.status_bar_color = curses.color_pair(6) | curses.A_BOLD | curses.A_REVERSE
 
         # curses.init_pair(6, -1, -1)
