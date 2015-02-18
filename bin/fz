@@ -270,7 +270,7 @@ class CursesProgressTicker(object):
         curses.use_default_colors()
         curses.noecho()
         self.window.nodelay(1)
-        curses.init_pair(8, curses.COLOR_GREEN, curses.COLOR_BLUE)
+        curses.init_pair(8, curses.COLOR_BLUE, curses.COLOR_BLACK)
         self.spinner_color = curses.color_pair(8) | curses.A_BOLD | curses.A_REVERSE
         # try:
         #     curses.curs_set(0)
@@ -469,12 +469,12 @@ class CursesPrinter(object):
 
 class Searcher(object):
 
-    class MoveToParentException(Exception):
+    class PageBackwardEventException(Exception):
         pass
 
-    class MoveToChildException(Exception):
-        def __init__(self, children):
-            self.children = children
+    class PageForwardEventException(Exception):
+        def __init__(self, selected_items):
+            self.selected_items = selected_items
 
     def __init__(self,
             ranker,
@@ -599,13 +599,13 @@ class Searcher(object):
                     selected = self._select_next(selected)
                 elif next_char == 67:
                     # <RIGHT>
-                    children = self._extract_selected_from_heap(
+                    selected_items = self._extract_selected_from_heap(
                             heap=current_heaps[-1],
                             selected=selected)
-                    raise Searcher.MoveToChildException(children)
+                    raise Searcher.PageForwardEventException(selected_items)
                 elif next_char == 68:
                     # <LEFT>
-                    raise Searcher.MoveToParentException
+                    raise Searcher.PageBackwardEventException
             elif next_char == 14:
                 # <CTRL-N>: Next
                 selected = self._select_next(selected)
@@ -729,15 +729,26 @@ class Searcher(object):
             i += 1
         self.output.flush()
 
-    def run(self, items, status_bar_extra_info=None):
+    def run(self,
+            items,
+            status_bar_extra_info=None,
+            page_backward_event_handler=None,
+            page_forward_event_handler=None):
         self.output.init()
-        try:
-            heap = [(i.score, i) for i in items]
-            heap.sort()
-            self._echo("", heap, 0, status_bar_extra_info=status_bar_extra_info)
-            return self._loop([heap])
-        finally:
-            self.output.cleanup()
+        while True:
+            try:
+                heap = [(i.score, i) for i in items]
+                heap.sort()
+                self._echo("", heap, 0, status_bar_extra_info=status_bar_extra_info)
+                return self._loop([heap])
+            except Searcher.PageBackwardEventException as e:
+                if page_backward_event_handler:
+                    items = page_backward_event_handler(e)
+            except Searcher.PageForwardEventException as e:
+                if page_forward_event_handler:
+                    items = page_forward_event_handler(e)
+            finally:
+                self.output.cleanup()
 
 class DirectorySource(object):
 
@@ -1151,10 +1162,7 @@ class DirRun(Runner):
         return items
 
     def find(self):
-        try:
-            items = self.fetch()
-        except KeyboardInterrupt:
-            sys.exit(1) # error so no process will execute anything on blank output
+        items = self.refresh_items()
         if not items:
             sys.stderr.write("No valid files or directories found.\n")
             sys.exit(0)
@@ -1172,7 +1180,12 @@ class DirRun(Runner):
             else:
                 status_bar_extra_info = "(multiple search paths)"
             with SandboxedStdOut() as ssout:
-                found = s.run(items, status_bar_extra_info=status_bar_extra_info)
+                found = s.run(
+                        items,
+                        status_bar_extra_info=status_bar_extra_info,
+                        page_backward_event_handler=self.page_backward_event_handler,
+                        page_forward_event_handler=self.page_forward_event_handler,
+                        )
         except KeyboardInterrupt:
             sys.exit(1) # error so no process will execute anything on blank output
         return found
@@ -1192,43 +1205,42 @@ class DirRun(Runner):
             if mirror_to_stderr:
                 sys.stderr.write(item_str)
 
-    def run(self):
-        while True:
-            try:
-                Runner.run(self)
-            except Searcher.MoveToParentException:
-                # self.args.paths = sorted(set([os.path.relpath(os.path.normpath(os.path.join(path, os.pardir))) for path in self.args.paths]))
-                self.args.paths = sorted(set([os.path.normpath(os.path.relpath(os.path.abspath(os.path.join(path, os.pardir)))) for path in self.args.paths]))
-                # self.args.paths = sorted(set([(os.path.normpath(os.path.join(path, os.pardir))) for path in self.args.paths]))
-                # self.args.paths = sorted(set([(os.path.normpath(os.path.join(path, os.pardir))) for path in self.args.paths]))
-                # self.args.paths = sorted(([(os.path.abspath(os.path.join(path, os.pardir))) for path in self.args.paths]))
-                # self.args.paths = sorted(([os.path.relpath(os.path.abspath(os.path.join(path, os.pardir))) for path in self.args.paths]))
-            except Searcher.MoveToChildException as e:
-                if self.args.directory_search_mode:
-                    new_dirs = []
-                    for child in e.children:
-                        new_dir = child.filepath
-                        # only add new_dir if there is at least on child directory
-                        for sub_dir in os.listdir(new_dir):
-                            if os.path.isdir(os.path.join(new_dir, sub_dir)):
-                                new_dirs.append(os.path.normpath(os.path.relpath(new_dir)))
-                                break
-                        else:
-                            # ? should we add parent?
-                            # new_dirs.append(child.dirname)
-                            pass
-                    new_dirs = sorted(set(new_dirs))
-                    if not new_dirs:
-                        sys.stderr.write("No valid sub-directories found in new search path(s).\n")
-                        sys.exit(0)
+    def page_backward_event_handler(self, event_exception_obj):
+        self.args.paths = sorted(set([os.path.normpath(os.path.relpath(os.path.abspath(os.path.join(path, os.pardir)))) for path in self.args.paths]))
+        return self.refresh_items()
+
+    def page_forward_event_handler(self, event_exception_obj):
+        if self.args.directory_search_mode:
+            new_dirs = []
+            for child in event_exception_obj.selected_items:
+                new_dir = child.filepath
+                # only add new_dir if there is at least on child directory
+                for sub_dir in os.listdir(new_dir):
+                    if os.path.isdir(os.path.join(new_dir, sub_dir)):
+                        new_dirs.append(os.path.normpath(os.path.relpath(new_dir)))
+                        break
                 else:
-                    new_dirs = sorted(set([os.path.normpath(os.path.relpath(c.dirname)) for c in e.children]))
-                    if not new_dirs:
-                        sys.stderr.write("No valid files or directories found in new search path(s).\n")
-                        sys.exit(0)
-                self.args.paths = new_dirs
-            else:
-                break
+                    # ? should we add parent?
+                    # new_dirs.append(child.dirname)
+                    pass
+            new_dirs = sorted(set(new_dirs))
+            if not new_dirs:
+                sys.stderr.write("No valid sub-directories found in new search path(s).\n")
+                sys.exit(0)
+        else:
+            new_dirs = sorted(set([os.path.normpath(os.path.relpath(c.dirname)) for c in e.selected_items]))
+            if not new_dirs:
+                sys.stderr.write("No valid files or directories found in new search path(s).\n")
+                sys.exit(0)
+        self.args.paths = new_dirs
+        return self.refresh_items()
+
+    def refresh_items(self):
+        try:
+            items = self.fetch()
+        except KeyboardInterrupt:
+            sys.exit(1) # error so no process will execute anything on blank output
+        return items
 
 def build_arg_parser():
     parser = argparse.ArgumentParser(description=__description__)
