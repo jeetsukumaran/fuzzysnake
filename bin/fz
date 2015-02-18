@@ -94,23 +94,23 @@ def dump_stack(out=None):
         else:
             out.write("{}: {}: {}\n".format(filename, line_num, source_code[source_index].strip()))
 
-def truncate_front(line, length=70):
+def truncate_front(line, length=70, truncation_str="<"):
     reduce_amt = len(line) - length
     # If it already fits
     if reduce_amt <= 0 or length <= 0:
         return line
-    reduce_amt += 3 # for the ellipsis
-    return '...'+line[reduce_amt:]
+    reduce_amt += len(truncation_str) # for the ellipsis
+    return truncation_str+line[reduce_amt:]
 
-def truncate_middle(line, length=70):
+def truncate_middle(line, length=70, truncation_str="..."):
     reduce_amt = len(line) - length
     # If it already fits
     if reduce_amt <= 0 or length <= 0:
         return line
-    reduce_amt += 3 # for the ellipsis
+    reduce_amt += len(truncation_str) # for the ellipsis
     start = (len(line) / 2) - (reduce_amt / 2)
     end = start + reduce_amt
-    return "%s...%s" % (line[:start], line[end:])
+    return "{}{}{}".format(line[:start], truncation_str, line[end:])
 
 def execute_command(cmd,
         args=None,
@@ -276,6 +276,7 @@ class CursesProgressTicker(object):
         #     curses.curs_set(0)
         # except curses.error:
         #     pass
+        self.window.erase()
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -401,9 +402,9 @@ class CursesPrinter(object):
 
         status_bar = " ".join(status_bar_components)
         if status_bar_extra_info:
-            remaining = width - len(status_bar) - 2
+            remaining = width - len(status_bar) - 1
             if remaining > 0:
-                status_bar += " " + truncate_middle(status_bar_extra_info, remaining)
+                status_bar += ("(" + truncate_front(status_bar_extra_info, remaining) + ")").rjust(remaining)
         status_bar = status_bar.ljust(width-1)[:width-1]
         self.window.move(height - 1, 0)
         self.window.addstr(status_bar, self.status_bar_color)
@@ -489,21 +490,27 @@ class Searcher(object):
             term_separator=';',
             whole_path_matching=False,
             match_type="fuzzy",
-            multiselection_mode=True):
+            multiselection_mode=True,
+            status_bar_extra_info=None):
         self.ranker = ranker
         self.output = output
         self.term_separator = term_separator
         self.whole_path_matching = whole_path_matching
         self.match_type = match_type
         self.multiselection_mode = multiselection_mode
+        self.status_bar_extra_info = status_bar_extra_info
 
-    def _getch(self, blocking=True):
+    def _getch(self, blocking=True, silent=None):
         if blocking:
             # self.output.window.timeout(-1)
             self.output.window.nodelay(0)
         else:
             # self.output.window.timeout(100)
             self.output.window.nodelay(1)
+        if silent is True:
+            curses.noecho()
+        elif silent is False:
+            curses.echo()
         ch = self.output.window.getch()
         ### FOLLOWING HACK NOT NEEDED ANY MORE, DUE TO FOLLOWING APPROACH::
         ###
@@ -583,20 +590,20 @@ class Searcher(object):
         selected = 0
         while True:
             self.output.window.timeout(-1)
-            next_char = self._getch(blocking=True)
+            next_char = self._getch(blocking=True, silent=True)
 
             # Escape: could be just Escape, could be Ansi escape for
             # arrows
             if next_char == 27:
                 # just escape? try non-blocking read to see if
                 # any other characters
-                next_char = self._getch(blocking=False)
+                next_char = self._getch(blocking=False, silent=True)
                 if next_char == -1:
                     raise KeyboardInterrupt()
                 # other characters available
                 # assuming arrow-key, we discard
                 # the current and read the next
-                next_char = self._getch(blocking=True)
+                next_char = self._getch(blocking=True, silent=True)
                 # Up/down
                 if next_char == 65:
                     # <UP>
@@ -718,13 +725,13 @@ class Searcher(object):
             selected -= 1
         return [heap[0][1]] if heap else []
 
-    def _echo(self, current_query, heap, selected, status_bar_extra_info=None):
+    def _echo(self, current_query, heap, selected):
         self.output.clear()
         self.output.print_query(
                 query=current_query,
                 match_type=self.match_type,
                 whole_path_matching=self.whole_path_matching,
-                status_bar_extra_info=status_bar_extra_info,
+                status_bar_extra_info=self.status_bar_extra_info,
                 )
         # for i, (score, item) in enumerate(heap):
         hc = list(heap)
@@ -740,7 +747,6 @@ class Searcher(object):
 
     def run(self,
             items,
-            status_bar_extra_info=None,
             page_backward_event_handler=None,
             page_forward_event_handler=None):
         self.output.init()
@@ -748,14 +754,14 @@ class Searcher(object):
             try:
                 heap = [(i.score, i) for i in items]
                 heap.sort()
-                self._echo("", heap, 0, status_bar_extra_info=status_bar_extra_info)
+                self._echo("", heap, 0)
                 return self._loop([heap])
             except Searcher.PageBackwardEventException as e:
                 if page_backward_event_handler:
-                    items = page_backward_event_handler(e)
+                    items, self.status_bar_extra_info = page_backward_event_handler(e)
             except Searcher.PageForwardEventException as e:
                 if page_forward_event_handler:
-                    items = page_forward_event_handler(e)
+                    items, self.status_bar_extra_info = page_forward_event_handler(e)
             finally:
                 self.output.cleanup()
 
@@ -1182,16 +1188,12 @@ class DirRun(Runner):
                 whole_path_matching=self.args.whole_path_match,
                 match_type=self.args.match_type,
                 multiselection_mode=self.args.multiselection_mode,
+                status_bar_extra_info=self.get_status_bar_extra_info(),
                 )
         try:
-            if len(self.args.paths) == 1:
-                status_bar_extra_info = "'{}'".format(os.path.normpath(os.path.abspath(self.args.paths[0])))
-            else:
-                status_bar_extra_info = "(multiple search paths)"
             with SandboxedStdOut() as ssout:
                 found = s.run(
                         items,
-                        status_bar_extra_info=status_bar_extra_info,
                         page_backward_event_handler=self.page_backward_event_handler,
                         page_forward_event_handler=self.page_forward_event_handler,
                         )
@@ -1216,7 +1218,7 @@ class DirRun(Runner):
 
     def page_backward_event_handler(self, event_exception_obj):
         self.args.paths = sorted(set([os.path.normpath(os.path.relpath(os.path.abspath(os.path.join(path, os.pardir)))) for path in self.args.paths]))
-        return self.refresh_items()
+        return (self.refresh_items(), self.get_status_bar_extra_info())
 
     def page_forward_event_handler(self, event_exception_obj):
         if self.args.directory_search_mode:
@@ -1242,7 +1244,7 @@ class DirRun(Runner):
                 sys.stderr.write("No valid files or directories found in new search path(s).\n")
                 sys.exit(0)
         self.args.paths = new_dirs
-        return self.refresh_items()
+        return (self.refresh_items(), self.get_status_bar_extra_info())
 
     def refresh_items(self):
         try:
@@ -1250,6 +1252,13 @@ class DirRun(Runner):
         except KeyboardInterrupt:
             sys.exit(1) # error so no process will execute anything on blank output
         return items
+
+    def get_status_bar_extra_info(self):
+        if len(self.args.paths) == 1:
+            status_bar_extra_info = "{}".format(os.path.normpath(os.path.abspath(self.args.paths[0])))
+        else:
+            status_bar_extra_info = "(multiple search paths)"
+        return status_bar_extra_info
 
 def build_arg_parser():
     parser = argparse.ArgumentParser(description=__description__)
