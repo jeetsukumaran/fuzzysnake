@@ -475,6 +475,23 @@ class CursesPrinter(object):
     def max_rows(self):
         return get_screen_dimensions()[0]-3
 
+def curses_error(message):
+    with SandboxedStdOut() as ssout:
+        window = curses.initscr()
+        curses.start_color()
+        curses.use_default_colors()
+        curses.noecho()
+        curses.init_pair(9, curses.COLOR_YELLOW, curses.COLOR_RED)
+        message_color = curses.color_pair(9) | curses.A_BOLD | curses.A_REVERSE
+        height, width = get_screen_dimensions()
+        padded_message = message.ljust(width-1)[:width-1]
+        window.move(height-1, 0)
+        window.addstr(padded_message, message_color)
+        window.refresh()
+        window.nodelay(0)
+        window.move(height-1, min(len(message), width-1))
+        ch = window.getch()
+
 class Searcher(object):
 
     class PageBackwardEventException(Exception):
@@ -1236,14 +1253,13 @@ class DirRun(Runner):
                     pass
             new_dirs = sorted(set(new_dirs))
             if not new_dirs:
-                sys.stderr.write("No valid sub-directories found in new search path(s).\n")
-                sys.exit(0)
+                curses_error("No valid sub-directories found in new search path(s)")
         else:
             new_dirs = sorted(set([os.path.normpath(os.path.relpath(c.dirname)) for c in e.selected_items]))
             if not new_dirs:
-                sys.stderr.write("No valid files or directories found in new search path(s).\n")
-                sys.exit(0)
-        self.args.paths = new_dirs
+                curses_error("No valid files or directories found in new search path(s).\n")
+        if new_dirs:
+            self.args.paths = new_dirs
         return (self.refresh_items(), self.get_status_bar_extra_info())
 
     def refresh_items(self):
