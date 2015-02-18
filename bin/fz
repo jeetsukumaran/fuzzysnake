@@ -659,8 +659,6 @@ class Searcher(object):
         selected_items = []
         index = 0
         while heap:
-            if not heap:
-                break
             score, item = heapq.heappop(heap)
             if item.is_selected or index == selected:
                 selected_items.append(item)
@@ -674,7 +672,7 @@ class Searcher(object):
                 break
             heapq.heappop(heap)
             selected -= 1
-        return [heap[0][1]]
+        return [heap[0][1]] if heap else []
 
     def _echo(self, current_query, heap, selected):
         self.output.clear()
