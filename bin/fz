@@ -64,6 +64,10 @@ __description__ = __doc__
 __author__ = 'Jeet Sukumaran'
 __copyright__ = 'Copyright (C) 2014 Jeet Sukumaran.'
 
+FIRST_ITEM_ROW_OFFSET = 3
+STATUS_BAR_OFFSET     = 2
+QUERY_ROW_OFFSET      = 1
+
 def levenshtein(s1, s2):
     if len(s1) < len(s2):
         return levenshtein(s2, s1)
@@ -310,9 +314,9 @@ class CursesProgressTicker(object):
         # self.window.addstr("[" + next(self.spinner_cycle) + "] " + message)
         s0 = next(self.spinner_cycle) + " " + message
         s1 = s0.ljust(width-1)[:width-1]
-        self.window.move(height-1, 0)
+        self.window.move(height - STATUS_BAR_OFFSET, 0)
         self.window.addstr(s1, self.spinner_color)
-        self.window.move(height-1, min(len(s0), width-1))
+        self.window.move(height - STATUS_BAR_OFFSET, min(len(s0), width-1))
         self.window.refresh()
 
 class CursesPrinter(object):
@@ -358,10 +362,6 @@ class CursesPrinter(object):
         # curses.init_pair(6, -1, -1)
         # self.status_bar_color = curses.color_pair(6) | curses.A_REVERSE
 
-        # positions
-        self.query_row_offset = 2
-        self.first_item_row_offset = self.query_row_offset + 1
-
     def cleanup(self):
         curses.echo()
         curses.endwin()
@@ -388,30 +388,18 @@ class CursesPrinter(object):
         else:
             status_bar_components.append("[^D] directory match: no ")
 
-        # pos = 0
-        # for field, value in status_bar_components:
-        #     self.window.move(height - 1, pos)
-        #     self.window.addstr(field, self.status_bar_color)
-        #     pos += len(field)
-        #     self.window.move(height - 1, pos)
-        #     self.window.addstr(" " + value, self.status_bar_highlight_color)
-        #     pos += len(value) + 2
-        # if status_bar_extra_info:
-        #     self.window.move(height - 1, pos)
-        #     self.window.addstr(status_bar_extra_info, self.status_bar_highlight_color)
-
         status_bar = " ".join(status_bar_components)
         if status_bar_extra_info:
             remaining = width - len(status_bar) - 1
             if remaining > 0:
                 status_bar += ("(" + truncate_front(status_bar_extra_info, remaining) + ")").rjust(remaining)
         status_bar = status_bar.ljust(width-1)[:width-1]
-        self.window.move(height - 1, 0)
+        self.window.move(height - STATUS_BAR_OFFSET, 0)
         self.window.addstr(status_bar, self.status_bar_color)
 
         q = prompt + query
         self.querylen = len(q)
-        self.window.move(height - self.query_row_offset, 0)
+        self.window.move(height - QUERY_ROW_OFFSET, 0)
         self.window.addstr(q, self.prompt_color)
 
     def print_item(self,
@@ -420,7 +408,7 @@ class CursesPrinter(object):
             is_current_row,
             query):
         height, width = self.window_size()
-        row = height - idx  - self.first_item_row_offset
+        row = height - idx  - FIRST_ITEM_ROW_OFFSET
         if row < 0:
             raise CursesPrinter.OutOfWindowBoundsException
         self.window.move(row, 0)
@@ -452,7 +440,7 @@ class CursesPrinter(object):
     def clear_query(self):
         height, width = self.window_size()
         q = " " * (width - 1)
-        self.window.move(height - self.query_row_offset, 0)
+        self.window.move(height - QUERY_ROW_OFFSET, 0)
         self.window.addstr(q, self.prompt_color)
 
     def clear(self):
@@ -460,7 +448,7 @@ class CursesPrinter(object):
 
     def flush(self):
         height, width = self.window_size()
-        self.window.move(height - self.query_row_offset, self.querylen)
+        self.window.move(height - QUERY_ROW_OFFSET, self.querylen)
         self.window.refresh()
 
     def move(self, y, x):
@@ -485,11 +473,11 @@ def curses_error(message):
         message_color = curses.color_pair(9) | curses.A_BOLD | curses.A_REVERSE
         height, width = get_screen_dimensions()
         padded_message = message.ljust(width-1)[:width-1]
-        window.move(height-1, 0)
+        window.move(height - STATUS_BAR_OFFSET, 0)
         window.addstr(padded_message, message_color)
         window.refresh()
         window.nodelay(0)
-        window.move(height-1, min(len(message), width-1))
+        window.move(height - STATUS_BAR_OFFSET, min(len(message), width-1))
         ch = window.getch()
 
 class Searcher(object):
