@@ -42,6 +42,8 @@ import fnmatch
 import re
 import itertools
 import collections
+import subprocess
+
 try:
     from StringIO import StringIO # Python 2 legacy support: StringIO in this module is the one needed (not io)
 except ImportError:
@@ -116,14 +118,9 @@ def truncate_middle(line, length=70, truncation_str="..."):
     end = start + reduce_amt
     return "{}{}{}".format(line[:start], truncation_str, line[end:])
 
-def execute_command(cmd,
+def compose_command(cmd,
         args=None,
-        substitute_token="{}",
-        verbose=True):
-    # Note: cannot use subprocess here due to parent process (this program)
-    # needing to exit before the subprocess is possibly done. `os.exec` and its
-    # kin work: independent process is spawn and the current process is
-    # replaced by it
+        substitute_token="{}"):
     cmd = shlex.split(cmd)
     if args is not None:
         substitution_made = False
@@ -139,10 +136,30 @@ def execute_command(cmd,
             cmd.extend(args)
         else:
             cmd = expanded_cmd + cmd[prev_idx:]
+    return cmd
+
+def execute_command(cmd,
+        args=None,
+        substitute_token="{}",
+        verbose=True,
+        as_subprocess=False):
+    cmd = compose_command(
+            cmd=cmd,
+            args=args,
+            substitute_token=substitute_token)
     if verbose:
         sys.stderr.write("{}\n".format(" ".join(cmd)))
     try:
-        os.execvp(cmd[0], cmd)
+        if not as_subprocess:
+            # Note: cannot use subprocess here due to parent process (this program)
+            # needing to exit before the subprocess is possibly done. `os.exec` and
+            # its kin work: independent processed is spawned and the current
+            # process is replaced by it.
+            os.execvp(cmd[0], cmd)
+        else:
+            curses_end()
+            p = subprocess.Popen(cmd)
+            p.communicate()
     except OSError:
         sys.stderr.write("Failed to execute command with tokens: {}\n".format(cmd))
         sys.exit(1)
@@ -292,8 +309,7 @@ class CursesProgressTicker(object):
         if self.suppress_window:
             return
         self.window.nodelay(0)
-        curses.echo()
-        curses.endwin()
+        curses_end()
 
     def check_for_cancel(self):
         if self.suppress_window:
@@ -363,8 +379,7 @@ class CursesPrinter(object):
         # self.status_bar_color = curses.color_pair(6) | curses.A_REVERSE
 
     def cleanup(self):
-        curses.echo()
-        curses.endwin()
+        curses_end()
 
     def print_query(self,
             query,
@@ -479,6 +494,11 @@ def curses_error(message):
         window.nodelay(0)
         window.move(height - STATUS_BAR_OFFSET, min(len(message), width-1))
         ch = window.getch()
+        curses_end()
+
+def curses_end():
+    curses.echo()
+    curses.endwin()
 
 class Searcher(object):
 
@@ -1090,6 +1110,9 @@ class Runner(object):
         if not found:
             sys.exit(1) # raise error to let parent shell know nothing was selected
         filepaths = [entry.filepath for entry in found]
+        self.apply_action(filepaths)
+
+    def apply_action(self, filepaths):
         if args.action_type == "edit":
             execute_command(self.editor_path, filepaths, verbose=not self.args.quiet)
         elif args.action_type == "open":
@@ -1242,13 +1265,15 @@ class DirRun(Runner):
             new_dirs = sorted(set(new_dirs))
             if not new_dirs:
                 curses_error("No valid sub-directories found in new search path(s)")
+            else:
+                self.args.paths = new_dirs
+            return (self.refresh_items(), self.get_status_bar_extra_info())
         else:
-            new_dirs = sorted(set([os.path.normpath(os.path.relpath(c.dirname)) for c in e.selected_items]))
-            if not new_dirs:
-                curses_error("No valid files or directories found in new search path(s).\n")
-        if new_dirs:
-            self.args.paths = new_dirs
-        return (self.refresh_items(), self.get_status_bar_extra_info())
+            filepaths = [entry.filepath for entry in event_exception_obj.selected_items]
+            if not filepaths:
+                curses_error("No valid files found or selected")
+            execute_command(self.editor_path, filepaths, verbose=not self.args.quiet, as_subprocess=True)
+            return (self.refresh_items(), self.get_status_bar_extra_info())
 
     def refresh_items(self):
         try:
