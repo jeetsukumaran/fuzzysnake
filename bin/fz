@@ -664,12 +664,7 @@ class Searcher(object):
         return [item[1] for item in current_heaps[-1] if item[1].is_selected]
 
     def _get_single_selected(self, current_heaps, selected):
-        h = current_heaps[-1]
-        for idx in range(len(h) - selected + 1):
-            if not h:
-                break
-            heapq.heappop(h)
-        return [heapq.heappop(h)[1]] if h else []
+        return [current_heaps[-1][selected][1]]
 
     def _echo(self, current_query, heap, selected):
         self.output.clear()
@@ -1157,16 +1152,19 @@ class DirRun(Runner):
                                 new_dirs.append(new_dir)
                                 break
                         else:
-                            pass
                             # ? should we add parent?
                             # new_dirs.append(child.dirname)
+                            pass
                     new_dirs = sorted(set(new_dirs))
+                    if not new_dirs:
+                        sys.stderr.write("No valid sub-directories found in new search path(s).\n")
+                        sys.exit(0)
                 else:
                     new_dirs = sorted(set([c.dirname for c in e.children]))
-                if new_dirs:
-                    self.args.paths = new_dirs
-                # else:
-                #     print("no valid dirs!")
+                    if not new_dirs:
+                        sys.stderr.write("No valid files or directories found in new search path(s).\n")
+                        sys.exit(0)
+                self.args.paths = new_dirs
             else:
                 break
 
