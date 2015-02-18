@@ -1065,49 +1065,52 @@ class DirRun(Runner):
             ignore_files = False
         if not self.args.paths:
             self.args.paths = ["."]
-        for path in self.args.paths:
-            if path == "-":
-                if sys.platform.startswith('win'):
-                    raise NotImplementedError("Reading from standard input is not supported on this system at this time")
-                # NOTE: To allow us to continue to get input from the tty
-                # standard input in the curses window in the interactive loop,
-                # We do *not* read from `sys.stdin` directly here. Instead we open
-                # a new file object bound to the system file descriptor '0'
-                # (standard input), and read from that. After this is done and
-                # closed (using the context manager), we must set sys.stdin's
-                # file descriptor to the tty opened for reading.
-                with os.fdopen(0, 'r') as src:
-                    for item in src.read().split("\n"):
-                        item = unicode_str(item)
-                        item = os.path.expandvars(os.path.expanduser(item))
-                        dirname = os.path.dirname(item)
-                        basename = os.path.basename(item)
-                        entry = Entry(dirname=dirname,
-                                filename=basename,
-                                score=len(items),
-                                match_start=0,
-                                match_end=0,
-                                whole_path_matching=False)
-                        items.append(entry)
-                sys.stdin = open("/dev/tty", "r")
-            else:
-                # Create a new sourcer on each pass.
-                # A little inefficient, but avoids cross-application
-                # of .gitignore etc. filters
-                ds = DirectorySource(
-                        target_filename_patterns=args.target_filename_pattern,
-                        ignore_directories=ignore_directories,
-                        ignore_files=ignore_files,
-                        respect_gitignores=respect_gitignores,
-                        include_hidden=args.include_hidden,
-                        dirs_to_exclude=args.dirs_to_exclude,
-                        files_to_exclude=args.files_to_exclude,
-                        filter_for_glob_names=args.filter_for_glob_names,
-                        max_recursion_depth=args.max_recursion_depth)
-                path = os.path.expandvars(os.path.expanduser(path))
-                ds.fetch(start_dir=path,
-                        results=items,
-                        suppress_progress_feedback=args.no_progress_window)
+        try:
+            for path in self.args.paths:
+                if path == "-":
+                    if sys.platform.startswith('win'):
+                        raise NotImplementedError("Reading from standard input is not supported on this system at this time")
+                    # NOTE: To allow us to continue to get input from the tty
+                    # standard input in the curses window in the interactive loop,
+                    # We do *not* read from `sys.stdin` directly here. Instead we open
+                    # a new file object bound to the system file descriptor '0'
+                    # (standard input), and read from that. After this is done and
+                    # closed (using the context manager), we must set sys.stdin's
+                    # file descriptor to the tty opened for reading.
+                    with os.fdopen(0, 'r') as src:
+                        for item in src.read().split("\n"):
+                            item = unicode_str(item)
+                            item = os.path.expandvars(os.path.expanduser(item))
+                            dirname = os.path.dirname(item)
+                            basename = os.path.basename(item)
+                            entry = Entry(dirname=dirname,
+                                    filename=basename,
+                                    score=len(items),
+                                    match_start=0,
+                                    match_end=0,
+                                    whole_path_matching=False)
+                            items.append(entry)
+                    sys.stdin = open("/dev/tty", "r")
+                else:
+                    # Create a new sourcer on each pass.
+                    # A little inefficient, but avoids cross-application
+                    # of .gitignore etc. filters
+                    ds = DirectorySource(
+                            target_filename_patterns=args.target_filename_pattern,
+                            ignore_directories=ignore_directories,
+                            ignore_files=ignore_files,
+                            respect_gitignores=respect_gitignores,
+                            include_hidden=args.include_hidden,
+                            dirs_to_exclude=args.dirs_to_exclude,
+                            files_to_exclude=args.files_to_exclude,
+                            filter_for_glob_names=args.filter_for_glob_names,
+                            max_recursion_depth=args.max_recursion_depth)
+                    path = os.path.expandvars(os.path.expanduser(path))
+                    ds.fetch(start_dir=path,
+                            results=items,
+                            suppress_progress_feedback=args.no_progress_window)
+        except KeyboardInterrupt:
+            pass
         return items
 
     def find(self):
