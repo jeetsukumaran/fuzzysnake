@@ -270,6 +270,8 @@ class CursesProgressTicker(object):
         curses.use_default_colors()
         curses.noecho()
         self.window.nodelay(1)
+        curses.init_pair(8, curses.COLOR_GREEN, curses.COLOR_BLUE)
+        self.spinner_color = curses.color_pair(8) | curses.A_BOLD | curses.A_REVERSE
         # try:
         #     curses.curs_set(0)
         # except curses.error:
@@ -306,7 +308,9 @@ class CursesProgressTicker(object):
         height, width = get_screen_dimensions()
         self.window.move(height-1, 0)
         # self.window.addstr("[" + next(self.spinner_cycle) + "] " + message)
-        self.window.addstr(next(self.spinner_cycle) + " " + message)
+        s = next(self.spinner_cycle) + " " + message
+        s = s.ljust(width-1)[:width-1]
+        self.window.addstr(s, self.spinner_color)
         self.window.refresh()
 
 class CursesPrinter(object):
@@ -348,9 +352,6 @@ class CursesPrinter(object):
 
         curses.init_pair(6, curses.COLOR_BLUE, curses.COLOR_WHITE)
         self.status_bar_color = curses.color_pair(6) | curses.A_BOLD | curses.A_REVERSE
-
-        curses.init_pair(7, curses.COLOR_BLUE, curses.COLOR_YELLOW)
-        self.status_bar_highlight_color = curses.color_pair(7) | curses.A_BOLD | curses.A_REVERSE
 
         # curses.init_pair(6, -1, -1)
         # self.status_bar_color = curses.color_pair(6) | curses.A_REVERSE
