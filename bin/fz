@@ -713,7 +713,7 @@ class DirectorySource(object):
         self.include_hidden = include_hidden
         if not self.include_hidden:
             # hidden_dir_pattern = r".*{s}\.[^{s}]".format(s=os.path.sep)
-            hidden_dir_pattern = r"^.*{s}\.[^{s}]+$".format(s=os.path.sep)
+            hidden_dir_pattern = r"^.*{s}\.[^.{s}][^{s}]+$".format(s=os.path.sep)
             try:
                 dirs_to_exclude.append(hidden_dir_pattern)
             except AttributeError:
@@ -1140,7 +1140,12 @@ class DirRun(Runner):
             try:
                 Runner.run(self)
             except Searcher.MoveToParentException:
-                self.args.paths = sorted(set([os.path.dirname(os.path.abspath(path)) for path in self.args.paths]))
+                # self.args.paths = sorted(set([os.path.relpath(os.path.normpath(os.path.join(path, os.pardir))) for path in self.args.paths]))
+                self.args.paths = sorted(set([os.path.relpath(os.path.abspath(os.path.join(path, os.pardir))) for path in self.args.paths]))
+                # self.args.paths = sorted(set([(os.path.normpath(os.path.join(path, os.pardir))) for path in self.args.paths]))
+                # self.args.paths = sorted(set([(os.path.normpath(os.path.join(path, os.pardir))) for path in self.args.paths]))
+                # self.args.paths = sorted(([(os.path.abspath(os.path.join(path, os.pardir))) for path in self.args.paths]))
+                # self.args.paths = sorted(([os.path.relpath(os.path.abspath(os.path.join(path, os.pardir))) for path in self.args.paths]))
             except Searcher.MoveToChildException as e:
                 if self.args.directory_search_mode:
                     new_dirs = []
@@ -1149,7 +1154,7 @@ class DirRun(Runner):
                         # only add new_dir if there is at least on child directory
                         for sub_dir in os.listdir(new_dir):
                             if os.path.isdir(os.path.join(new_dir, sub_dir)):
-                                new_dirs.append(new_dir)
+                                new_dirs.append(os.path.relpath(new_dir))
                                 break
                         else:
                             # ? should we add parent?
@@ -1160,7 +1165,7 @@ class DirRun(Runner):
                         sys.stderr.write("No valid sub-directories found in new search path(s).\n")
                         sys.exit(0)
                 else:
-                    new_dirs = sorted(set([c.dirname for c in e.children]))
+                    new_dirs = sorted(set([os.path.relpath(c.dirname) for c in e.children]))
                     if not new_dirs:
                         sys.stderr.write("No valid files or directories found in new search path(s).\n")
                         sys.exit(0)
