@@ -564,8 +564,8 @@ class Searcher(object):
                     selected = self._select_next(selected)
                 elif next_char == 67:
                     # <RIGHT>
-                    children = self._get_selected(
-                            current_heaps=current_heaps,
+                    children = self._extract_selected_from_heap(
+                            heap=current_heaps[-1],
                             selected=selected)
                     raise Searcher.MoveToChildException(children)
                 elif next_char == 68:
@@ -625,8 +625,8 @@ class Searcher(object):
             else:
                 # Selected
                 if next_char == 10 or next_char == 13: # enter
-                    return self._get_selected(
-                            current_heaps=current_heaps,
+                    return self._extract_selected_from_heap(
+                            heap=current_heaps[-1],
                             selected=selected)
                 selected = 0
                 if next_char in (3, 7, 26, 28):
@@ -645,26 +645,37 @@ class Searcher(object):
                         pass
             self._echo(current_query, current_heaps[-1], selected)
 
-    def _get_selected(self, current_heaps, selected):
+    def _extract_selected_from_heap(self, heap, selected):
+        heap = list(heap)
         if self.multiselection_mode:
-            return self._get_multi_selected(
-                    current_heaps=current_heaps,
+            return self._extract_multi_selected_from_heap(
+                    heap=heap,
                     selected=selected)
         else:
-            return self._get_single_selected(
-                    current_heaps=current_heaps,
+            return self._extract_single_selected_from_heap(
+                    heap=heap,
                     selected=selected)
 
-    def _get_multi_selected(self, current_heaps, selected):
-        try:
-            current_heaps[-1][selected][1].is_selected = True
-        except IndexError:
-            pass
-        h = current_heaps[-1]
-        return [item[1] for item in current_heaps[-1] if item[1].is_selected]
+    def _extract_multi_selected_from_heap(self, heap, selected):
+        selected_items = []
+        index = 0
+        while heap:
+            if not heap:
+                break
+            score, item = heapq.heappop(heap)
+            if item.is_selected or index == selected:
+                selected_items.append(item)
+            index += 1
+        return selected_items
 
-    def _get_single_selected(self, current_heaps, selected):
-        return [current_heaps[-1][selected][1]]
+    def _extract_single_selected_from_heap(self, heap, selected):
+        # return [heap[selected][1]]
+        while selected:
+            if not heap:
+                break
+            heapq.heappop(heap)
+            selected -= 1
+        return [heap[0][1]]
 
     def _echo(self, current_query, heap, selected):
         self.output.clear()
@@ -672,11 +683,16 @@ class Searcher(object):
                 query=current_query,
                 match_type=self.match_type,
                 whole_path_matching=self.whole_path_matching)
-        for i, (score, item) in enumerate(heap):
+        # for i, (score, item) in enumerate(heap):
+        hc = list(heap)
+        i = 0
+        while hc:
+            score, item = heapq.heappop(hc)
             try:
                 self.output.print_item(i, item, i==selected, current_query)
             except CursesPrinter.OutOfWindowBoundsException:
                 break
+            i += 1
         self.output.flush()
 
     def run(self, items):
