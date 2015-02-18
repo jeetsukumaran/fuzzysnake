@@ -330,16 +330,30 @@ class CursesPrinter(object):
         self.default_color = curses.color_pair(1)
 
         ## TODO: allow configuration from environmental variable or rc file!
+
         curses.init_pair(2, curses.COLOR_GREEN, -1)
         self.match_color = curses.color_pair(2) | curses.A_UNDERLINE
+
         curses.init_pair(3, curses.COLOR_MAGENTA, -1)
         self.is_selected_color = curses.color_pair(3) | curses.A_BOLD
+
         curses.init_pair(4, -1, -1)
         self.current_row_color = curses.color_pair(4) # note: will be reversed below
+
         curses.init_pair(5, curses.COLOR_MAGENTA, -1)
         self.prompt_color = curses.color_pair(5) | curses.A_BOLD
-        curses.init_pair(6, -1, -1)
+
+        # curses.init_pair(6, curses.COLOR_GREEN, -1)
+        # self.status_bar_color = curses.color_pair(6) | curses.A_BOLD | curses.A_REVERSE
+
+        curses.init_pair(6, curses.COLOR_BLUE, curses.COLOR_WHITE)
         self.status_bar_color = curses.color_pair(6) | curses.A_BOLD | curses.A_REVERSE
+
+        curses.init_pair(7, curses.COLOR_BLUE, curses.COLOR_YELLOW)
+        self.status_bar_highlight_color = curses.color_pair(7) | curses.A_BOLD | curses.A_REVERSE
+
+        # curses.init_pair(6, -1, -1)
+        # self.status_bar_color = curses.color_pair(6) | curses.A_REVERSE
 
         # positions
         self.query_row_offset = 2
@@ -352,28 +366,48 @@ class CursesPrinter(object):
     def print_query(self,
             query,
             match_type,
-            whole_path_matching):
+            whole_path_matching,
+            status_bar_extra_info=None):
         height, width = self.window_size()
-        config = []
+
+        status_bar_components = []
         if match_type == "fuzzy":
             prompt = "? "
-            config.append("[^R] expression: fuzzy  ")
+            status_bar_components.append("[^R] expression: fuzzy  ")
         elif match_type == "literal":
             prompt = "= "
-            config.append("[^R] expression: literal")
+            status_bar_components.append("[^R] expression: literal")
         elif match_type == "regexp":
             prompt = "% "
-            config.append("[^R] expression: regular")
+            status_bar_components.append("[^R] expression: regular")
         if whole_path_matching:
-            config.append("[^D] directory match: yes")
+            status_bar_components.append("[^D] directory match: yes")
         else:
-            config.append("[^D] directory match: no ")
+            status_bar_components.append("[^D] directory match: no ")
+
+        # pos = 0
+        # for field, value in status_bar_components:
+        #     self.window.move(height - 1, pos)
+        #     self.window.addstr(field, self.status_bar_color)
+        #     pos += len(field)
+        #     self.window.move(height - 1, pos)
+        #     self.window.addstr(" " + value, self.status_bar_highlight_color)
+        #     pos += len(value) + 2
+        # if status_bar_extra_info:
+        #     self.window.move(height - 1, pos)
+        #     self.window.addstr(status_bar_extra_info, self.status_bar_highlight_color)
+
+        status_bar = " ".join(status_bar_components)
+        if status_bar_extra_info:
+            remaining = width - len(status_bar) - 2
+            if remaining > 0:
+                status_bar += " " + truncate_middle(status_bar_extra_info, remaining)
+        status_bar = status_bar.ljust(width-1)[:width-1]
+        self.window.move(height - 1, 0)
+        self.window.addstr(status_bar, self.status_bar_color)
+
         q = prompt + query
         self.querylen = len(q)
-        config = " ".join(config)
-        config = config.ljust(width-1)[:width-1]
-        self.window.move(height - 1, 0)
-        self.window.addstr(config, self.status_bar_color)
         self.window.move(height - self.query_row_offset, 0)
         self.window.addstr(q, self.prompt_color)
 
@@ -674,12 +708,14 @@ class Searcher(object):
             selected -= 1
         return [heap[0][1]] if heap else []
 
-    def _echo(self, current_query, heap, selected):
+    def _echo(self, current_query, heap, selected, status_bar_extra_info=None):
         self.output.clear()
         self.output.print_query(
                 query=current_query,
                 match_type=self.match_type,
-                whole_path_matching=self.whole_path_matching)
+                whole_path_matching=self.whole_path_matching,
+                status_bar_extra_info=status_bar_extra_info,
+                )
         # for i, (score, item) in enumerate(heap):
         hc = list(heap)
         i = 0
@@ -692,12 +728,12 @@ class Searcher(object):
             i += 1
         self.output.flush()
 
-    def run(self, items):
+    def run(self, items, status_bar_extra_info=None):
         self.output.init()
         try:
             heap = [(i.score, i) for i in items]
             heap.sort()
-            self._echo("", heap, 0)
+            self._echo("", heap, 0, status_bar_extra_info=status_bar_extra_info)
             return self._loop([heap])
         finally:
             self.output.cleanup()
@@ -1130,8 +1166,12 @@ class DirRun(Runner):
                 multiselection_mode=self.args.multiselection_mode,
                 )
         try:
+            if len(self.args.paths) == 1:
+                status_bar_extra_info = "'{}'".format(os.path.normpath(os.path.abspath(self.args.paths[0])))
+            else:
+                status_bar_extra_info = "(multiple search paths)"
             with SandboxedStdOut() as ssout:
-                found = s.run(items)
+                found = s.run(items, status_bar_extra_info=status_bar_extra_info)
         except KeyboardInterrupt:
             sys.exit(1) # error so no process will execute anything on blank output
         return found
