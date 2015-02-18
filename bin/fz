@@ -646,7 +646,6 @@ class Searcher(object):
             self._echo(current_query, current_heaps[-1], selected)
 
     def _extract_selected_from_heap(self, heap, selected):
-        heap = list(heap)
         if self.multiselection_mode:
             return self._extract_multi_selected_from_heap(
                     heap=heap,
