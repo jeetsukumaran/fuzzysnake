@@ -270,7 +270,7 @@ class CursesProgressTicker(object):
         curses.use_default_colors()
         curses.noecho()
         self.window.nodelay(1)
-        curses.init_pair(8, curses.COLOR_BLUE, curses.COLOR_BLACK)
+        curses.init_pair(8, curses.COLOR_YELLOW, curses.COLOR_BLUE)
         self.spinner_color = curses.color_pair(8) | curses.A_BOLD | curses.A_REVERSE
         # try:
         #     curses.curs_set(0)
@@ -306,11 +306,12 @@ class CursesProgressTicker(object):
             return
         self.current_step += 1
         height, width = get_screen_dimensions()
-        self.window.move(height-1, 0)
         # self.window.addstr("[" + next(self.spinner_cycle) + "] " + message)
-        s = next(self.spinner_cycle) + " " + message
-        s = s.ljust(width-1)[:width-1]
-        self.window.addstr(s, self.spinner_color)
+        s0 = next(self.spinner_cycle) + " " + message
+        s1 = s0.ljust(width-1)[:width-1]
+        self.window.move(height-1, 0)
+        self.window.addstr(s1, self.spinner_color)
+        self.window.move(height-1, min(len(s0), width-1))
         self.window.refresh()
 
 class CursesPrinter(object):
@@ -350,7 +351,7 @@ class CursesPrinter(object):
         # curses.init_pair(6, curses.COLOR_GREEN, -1)
         # self.status_bar_color = curses.color_pair(6) | curses.A_BOLD | curses.A_REVERSE
 
-        curses.init_pair(6, curses.COLOR_BLUE, curses.COLOR_WHITE)
+        curses.init_pair(6, curses.COLOR_YELLOW, curses.COLOR_BLACK)
         self.status_bar_color = curses.color_pair(6) | curses.A_BOLD | curses.A_REVERSE
 
         # curses.init_pair(6, -1, -1)
@@ -446,6 +447,12 @@ class CursesPrinter(object):
             self.window.addstr(right, color | weight)
         else:
             self.window.addstr(display_name, color | weight)
+
+    def clear_query(self):
+        height, width = self.window_size()
+        q = " " * (width - 1)
+        self.window.move(height - self.query_row_offset, 0)
+        self.window.addstr(q, self.prompt_color)
 
     def clear(self):
         self.window.clear()
@@ -602,9 +609,11 @@ class Searcher(object):
                     selected_items = self._extract_selected_from_heap(
                             heap=current_heaps[-1],
                             selected=selected)
+                    self.output.clear_query()
                     raise Searcher.PageForwardEventException(selected_items)
                 elif next_char == 68:
                     # <LEFT>
+                    self.output.clear_query()
                     raise Searcher.PageBackwardEventException
             elif next_char == 14:
                 # <CTRL-N>: Next
