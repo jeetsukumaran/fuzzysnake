@@ -1110,33 +1110,41 @@ class Runner(object):
         if not found:
             sys.exit(1) # raise error to let parent shell know nothing was selected
         filepaths = [entry.filepath for entry in found]
-        self.apply_action(filepaths)
+        self.apply_action(filepaths, as_subprocess=False)
 
-    def apply_action(self, filepaths):
+    def apply_action(self, filepaths, as_subprocess=False):
         if args.action_type == "edit":
-            execute_command(self.editor_path, filepaths, verbose=not self.args.quiet)
+            execute_command(self.editor_path, filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
         elif args.action_type == "open":
-            execute_command("open", filepaths, verbose=not self.args.quiet)
+            execute_command("open", filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
         elif args.action_type == "command":
-            execute_command(args.action_target, filepaths, verbose=not self.args.quiet)
+            execute_command(args.action_target, filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
         elif args.action_type == "print":
             if not hasattr(args, "action_target") or args.action_target == "-":
+                if as_subprocess:
+                    curses_end()
                 for filepath in filepaths:
                     sys.stdout.write(filepath)
                     sys.stdout.write("\n")
                     if not self.args.quiet:
                         sys.stderr.write(filepath)
                         sys.stderr.write("\n")
-                sys.exit(0)
+                if not as_subprocess:
+                    sys.exit(0)
             else:
                 out = open(os.path.expandvars(os.path.expanduser(args.action_target)), "w")
                 with out:
                     for filepath in filepaths:
                         out.write(filepath)
                         out.write("\n")
-                sys.exit(0)
+                if not as_subprocess:
+                    sys.exit(0)
         else:
-            sys.exit("Unrecognized action: '{}'".format(args.action_type))
+            error_msg = "Unrecognized action: '{}'".format(args.action_type)
+            if not as_subprocess:
+                sys.exit(error_msg)
+            else:
+                curses_error(error_msg)
 
 class DirRun(Runner):
 
@@ -1272,7 +1280,9 @@ class DirRun(Runner):
             filepaths = [entry.filepath for entry in event_exception_obj.selected_items]
             if not filepaths:
                 curses_error("No valid files found or selected")
-            execute_command(self.editor_path, filepaths, verbose=not self.args.quiet, as_subprocess=True)
+            else:
+                self.apply_action(filepaths, as_subprocess=True)
+                # execute_command(self.editor_path, filepaths, verbose=not self.args.quiet, as_subprocess=True)
             return (self.refresh_items(), self.get_status_bar_extra_info())
 
     def refresh_items(self):
