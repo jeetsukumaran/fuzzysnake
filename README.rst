@@ -94,8 +94,9 @@ then `$EDITOR` will be used instead).
 
 You reset the search paths to the parent directory of each path by using the
 `<LEFT>` arrow key. In the normal file-selection mode, you can use the
-`<RIGHT>` arrow key to edit the selected file(s) without closing `FuzzySnake`.
-In directory-selection mode, the `<RIGHT>` arrow key will instead "drill down"
+`<RIGHT>` arrow key to open (or, if an alterate action is specified, performat
+that action on) the selected file(s) without closing `FuzzySnake`. In
+directory-selection mode, the `<RIGHT>` arrow key will instead "drill down"
 into the currently selected path(s).
 
 Instead of opening the selected path in an editor, you can also execute a
