@@ -86,11 +86,16 @@ As you start typing characters, the list entries that do not match the growing
 query expression will be filtered out.
 
 Once you have the list down to manageable size, or whenever you see a file that
-you want, ou can use the `<UP>` and `<DOWN>` arrow keys (or `<CTRL-N>` and
+you want, you can use the `<UP>` and `<DOWN>` arrow keys (or `<CTRL-N>` and
 `<CTRL-P>`) to navigate to and select that entry.
 Then you can hit `<ENTER>` to open it for editing in an editor of your choice,
 as set the environmental variable `$FUZZYSNAKE_EDITOR` (if this is not defined,
 then `$EDITOR` will be used instead).
+
+You reset the search paths to the parent directory of each path by using the
+`<LEFT>` arrow key. Conversely, you can "drill down" directories by reseting
+the search paths to the currently selected path(s) by using the `<RIGHT>` arrow
+key.
 
 Instead of opening the selected path in an editor, you can also execute a
 custom command on it using the '`-c`'/'`--execute-command`' option, or open the

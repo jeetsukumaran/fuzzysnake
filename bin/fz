@@ -434,6 +434,13 @@ class CursesPrinter(object):
 
 class Searcher(object):
 
+    class MoveToParentException(Exception):
+        pass
+
+    class MoveToChildException(Exception):
+        def __init__(self, children):
+            self.children = children
+
     def __init__(self,
             ranker,
             output,
@@ -555,6 +562,16 @@ class Searcher(object):
                 elif next_char == 66:
                     # <DOWN>
                     selected = self._select_next(selected)
+                elif next_char == 67:
+                    # <RIGHT>
+                    children = self._get_selected(
+                            heapq=heapq,
+                            current_heaps=current_heaps,
+                            selected=selected)
+                    raise Searcher.MoveToChildException(children)
+                elif next_char == 68:
+                    # <LEFT>
+                    raise Searcher.MoveToParentException
             elif next_char == 14:
                 # <CTRL-N>: Next
                 selected = self._select_next(selected)
@@ -609,19 +626,10 @@ class Searcher(object):
             else:
                 # Selected
                 if next_char == 10 or next_char == 13: # enter
-                    if self.multiselection_mode:
-                        try:
-                            current_heaps[-1][selected][1].is_selected = True
-                        except IndexError:
-                            pass
-                        h = current_heaps[-1]
-                        return [item[1] for item in current_heaps[-1] if item[1].is_selected]
-                    else:
-                        h = current_heaps[-1]
-                        for _ in range(selected):
-                            if not h: break
-                            heapq.heappop(h)
-                        return [heapq.heappop(h)[1]] if h else []
+                    return self._get_selected(
+                            heapq=heapq,
+                            current_heaps=current_heaps,
+                            selected=selected)
                 selected = 0
                 if next_char in (3, 7, 26, 28):
                     # <CTRL-C>, <CTRL-G>, <CTRL-Z>, etc.
@@ -638,6 +646,32 @@ class Searcher(object):
                     except ValueError:
                         pass
             self._echo(current_query, current_heaps[-1], selected)
+
+    def _get_selected(self, heapq, current_heaps, selected):
+        if self.multiselection_mode:
+            return self._get_multi_selected(
+                    current_heaps=current_heaps,
+                    selected=selected)
+        else:
+            return self._get_single_selected(
+                    heapq=heapq,
+                    current_heaps=current_heaps,
+                    selected=selected)
+
+    def _get_multi_selected(self, current_heaps, selected):
+        try:
+            current_heaps[-1][selected][1].is_selected = True
+        except IndexError:
+            pass
+        h = current_heaps[-1]
+        return [item[1] for item in current_heaps[-1] if item[1].is_selected]
+
+    def _get_single_selected(self, heapq, current_heaps, selected):
+        h = current_heaps[-1]
+        for _ in range(selected):
+            if not h: break
+            heapq.heappop(h)
+        return [heapq.heappop(h)[1]] if h else []
 
     def _echo(self, current_query, heap, selected):
         self.output.clear()
@@ -968,6 +1002,7 @@ class FuzzyRanker(object):
         return agg_score, match_start, match_end
 
 class Runner(object):
+
     def __init__(self, args):
         self.args = args
         self.editor_path = os.environ.get("FUZZYSNAKE_EDITOR", os.environ.get("EDITOR", "vi"))
@@ -1007,6 +1042,10 @@ class Runner(object):
 
 class DirRun(Runner):
 
+    def __init__(self, args):
+        self.args = args
+        self.editor_path = os.environ.get("FUZZYSNAKE_EDITOR", os.environ.get("EDITOR", "vi"))
+
     def fetch(self, items=None):
         if items is None:
             items = []
@@ -1017,10 +1056,9 @@ class DirRun(Runner):
         else:
             ignore_directories = True
             ignore_files = False
-        search_paths = self.args.paths
-        if not search_paths:
-            search_paths = ["."]
-        for path in search_paths:
+        if not self.args.paths:
+            self.args.paths = ["."]
+        for path in self.args.paths:
             if path == "-":
                 if sys.platform.startswith('win'):
                     raise NotImplementedError("Reading from standard input is not supported on this system at this time")
@@ -1102,6 +1140,36 @@ class DirRun(Runner):
             out.write(item_str)
             if mirror_to_stderr:
                 sys.stderr.write(item_str)
+
+    def run(self):
+        while True:
+            try:
+                Runner.run(self)
+            except Searcher.MoveToParentException:
+                self.args.paths = sorted(set([os.path.dirname(os.path.abspath(path)) for path in self.args.paths]))
+            except Searcher.MoveToChildException as e:
+                if self.args.directory_search_mode:
+                    new_dirs = []
+                    for child in e.children:
+                        new_dir = child.filepath
+                        # only add new_dir if there is at least on child directory
+                        for sub_dir in os.listdir(new_dir):
+                            if os.path.isdir(os.path.join(new_dir, sub_dir)):
+                                new_dirs.append(new_dir)
+                                break
+                        else:
+                            pass
+                            # ? should we add parent?
+                            # new_dirs.append(child.dirname)
+                    new_dirs = sorted(set(new_dirs))
+                else:
+                    new_dirs = sorted(set([c.dirname for c in e.children]))
+                if new_dirs:
+                    self.args.paths = new_dirs
+                # else:
+                #     print("no valid dirs!")
+            else:
+                break
 
 def build_arg_parser():
     parser = argparse.ArgumentParser(description=__description__)
