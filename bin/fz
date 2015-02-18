@@ -719,7 +719,8 @@ class DirectorySource(object):
             self.target_filename_pattern = re.compile("(" + "|".join(target_filename_patterns) + ")")
         self.include_hidden = include_hidden
         if not self.include_hidden:
-            hidden_dir_pattern = r".*{s}\.[^{s}]".format(s=os.path.sep)
+            # hidden_dir_pattern = r".*{s}\.[^{s}]".format(s=os.path.sep)
+            hidden_dir_pattern = r"^.*{s}\.[^{s}]+$".format(s=os.path.sep)
             try:
                 dirs_to_exclude.append(hidden_dir_pattern)
             except AttributeError:
