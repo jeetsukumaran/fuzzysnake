@@ -2,7 +2,7 @@
 
 ###############################################################################
 ##
-##  Copyright 2014 Jeet Sukumaran.
+##  Copyright 2014-2015 Jeet Sukumaran.
 ##
 ##  Licensed under the Apache License, Version 2.0 (the "License");
 ##  you may not use this file except in compliance with the License.
@@ -16,8 +16,7 @@
 ##  See the License for the specific language governing permissions and
 ##  limitations under the License.
 ##
-##
-## Modified by Jeet Sukumaran from "quickfind"::
+##  Based on ideas and code from "quickfind"::
 ##
 ##      quickfind
 ##      https://github.com/Refefer/quickfind
@@ -30,6 +29,8 @@ A utility to find, list, filter, and act on files or directories from your
 shell, using dynamic fuzzy-matching of patterns as you type them in.
 """
 
+# Imports {{{1
+# ==============================================================================
 import os
 import sys
 import termios
@@ -43,7 +44,6 @@ import re
 import itertools
 import collections
 import subprocess
-
 try:
     from StringIO import StringIO # Python 2 legacy support: StringIO in this module is the one needed (not io)
 except ImportError:
@@ -59,17 +59,26 @@ else:
     unicode_str = lambda x: unicode(x, errors="ignore")
 import shlex
 import itertools
+# }}}1
 
+# Program Metadata {{{1
+# ==============================================================================
 __prog__ = os.path.basename(__file__)
-__version__ = "3.0.0"
+__version__ = "4.0.0"
 __description__ = __doc__
 __author__ = 'Jeet Sukumaran'
-__copyright__ = 'Copyright (C) 2014 Jeet Sukumaran.'
+__copyright__ = 'Copyright (C) 2015 Jeet Sukumaran.'
+# }}}1
 
+# Globals {{{1
+# ==============================================================================
 FIRST_ITEM_ROW_OFFSET = 3
 STATUS_BAR_OFFSET     = 2
 QUERY_ROW_OFFSET      = 1
+# }}}1
 
+# Text Utilities {{{1
+# ==============================================================================
 def levenshtein(s1, s2):
     if len(s1) < len(s2):
         return levenshtein(s2, s1)
@@ -90,16 +99,6 @@ def levenshtein(s1, s2):
 
     return previous_row[-1]
 
-def dump_stack(out=None):
-    import inspect
-    if out is None:
-        out = sys.stderr
-    for frame, filename, line_num, func, source_code, source_index in inspect.stack()[2:]:
-        if source_code is None:
-            out.write("{}: {}\n".format(filename, line_num))
-        else:
-            out.write("{}: {}: {}\n".format(filename, line_num, source_code[source_index].strip()))
-
 def truncate_front(line, length=70, truncation_str="<"):
     reduce_amt = len(line) - length
     # If it already fits
@@ -117,6 +116,23 @@ def truncate_middle(line, length=70, truncation_str="..."):
     start = (len(line) / 2) - (reduce_amt / 2)
     end = start + reduce_amt
     return "{}{}{}".format(line[:start], truncation_str, line[end:])
+# }}}1
+
+# Debugging {{{1
+# ==============================================================================
+def dump_stack(out=None):
+    import inspect
+    if out is None:
+        out = sys.stderr
+    for frame, filename, line_num, func, source_code, source_index in inspect.stack()[2:]:
+        if source_code is None:
+            out.write("{}: {}\n".format(filename, line_num))
+        else:
+            out.write("{}: {}: {}\n".format(filename, line_num, source_code[source_index].strip()))
+# }}}1
+
+# External Command and Event Handling {{{1
+# ==============================================================================
 
 def compose_command(cmd,
         args=None,
@@ -164,6 +180,11 @@ def execute_command(cmd,
         sys.stderr.write("Failed to execute command with tokens: {}\n".format(cmd))
         sys.exit(1)
 
+# }}}1
+
+# CURSES Support {{{1
+# ==============================================================================
+
 def get_screen_dimensions():
     env = os.environ
     def ioctl_GWINSZ(fd):
@@ -174,82 +195,27 @@ def get_screen_dimensions():
         return cr
     return ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2) or (25, 80)
 
-class Entry(object):
+def curses_error(message):
+    with SandboxedStdOut() as ssout:
+        window = curses.initscr()
+        curses.start_color()
+        curses.use_default_colors()
+        curses.noecho()
+        curses.init_pair(9, curses.COLOR_YELLOW, curses.COLOR_RED)
+        message_color = curses.color_pair(9) | curses.A_BOLD | curses.A_REVERSE
+        height, width = get_screen_dimensions()
+        padded_message = message.ljust(width-1)[:width-1]
+        window.move(height - STATUS_BAR_OFFSET, 0)
+        window.addstr(padded_message, message_color)
+        window.refresh()
+        window.nodelay(0)
+        window.move(height - STATUS_BAR_OFFSET, min(len(message), width-1))
+        ch = window.getch()
+        curses_end()
 
-    def __init__(self,
-            dirname,
-            filename,
-            score,
-            match_start,
-            match_end,
-            whole_path_matching,
-            is_selected=False):
-        self._dirname = os.path.normpath(dirname)
-        self._filename = os.path.normpath(filename)
-        # self.dirname = dirname
-        # self.filename = filename
-        self.score = score
-        self.whole_path_matching = whole_path_matching
-        self._match_start_offset = match_start
-        self._match_end_offset = match_end
-        self.is_selected = is_selected
-
-    def _get_match_target(self):
-        if self.whole_path_matching:
-            return self.filepath
-        else:
-            return self.filename
-    match_target = property(_get_match_target)
-
-    def _get_display_name(self):
-        return self.filepath
-    display_name = property(_get_display_name)
-
-    def _get_dirname(self):
-        return self._dirname
-    def _set_dirname(self, name):
-        if name:
-            self._dirname = os.path.normpath(name)
-        else:
-            self._dirname = ""
-    dirname = property(_get_dirname, _set_dirname)
-
-    def _get_filename(self):
-        return self._filename
-    def _set_filename(self, name):
-        if name:
-            self._filename = os.path.normpath(name)
-        else:
-            self._filename = ""
-    filename = property(_get_filename, _set_filename)
-
-    def _get_filepath(self):
-        return os.path.normpath(os.path.join(self._dirname, self._filename))
-    filepath = property(_get_filepath)
-
-    def _start_of_basename_in_filepath(self):
-        return len(os.path.normpath(os.path.join(self._dirname, "x"))) - 1
-
-    def _get_match_start(self):
-        if self.whole_path_matching:
-            return self._match_start_offset
-        else:
-            return self._start_of_basename_in_filepath() + self._match_start_offset
-    def _set_match_start(self, v):
-        self._match_start_offset = v
-    match_start = property(_get_match_start, _set_match_start)
-
-    def _get_match_end(self):
-        if self.whole_path_matching:
-            return self._match_end_offset
-        else:
-            return self._start_of_basename_in_filepath() + self._match_end_offset
-    def _set_match_end(self, v):
-        self._match_end_offset = v
-    match_end = property(_get_match_end, _set_match_end)
-
-    def __lt__(self, other):
-        return self.score < other.score
+def curses_end():
+    curses.echo()
+    curses.endwin()
 
 class SandboxedStdOut(object):
 
@@ -478,29 +444,94 @@ class CursesPrinter(object):
     def max_rows(self):
         return get_screen_dimensions()[0]-3
 
-def curses_error(message):
-    with SandboxedStdOut() as ssout:
-        window = curses.initscr()
-        curses.start_color()
-        curses.use_default_colors()
-        curses.noecho()
-        curses.init_pair(9, curses.COLOR_YELLOW, curses.COLOR_RED)
-        message_color = curses.color_pair(9) | curses.A_BOLD | curses.A_REVERSE
-        height, width = get_screen_dimensions()
-        padded_message = message.ljust(width-1)[:width-1]
-        window.move(height - STATUS_BAR_OFFSET, 0)
-        window.addstr(padded_message, message_color)
-        window.refresh()
-        window.nodelay(0)
-        window.move(height - STATUS_BAR_OFFSET, min(len(message), width-1))
-        ch = window.getch()
-        curses_end()
+# }}}1
 
-def curses_end():
-    curses.echo()
-    curses.endwin()
+# Data Model {{{1
+# ==============================================================================
 
-class Searcher(object):
+class Entry(object):
+
+    def __init__(self,
+            dirname,
+            filename,
+            score,
+            match_start,
+            match_end,
+            whole_path_matching,
+            is_selected=False):
+        self._dirname = os.path.normpath(dirname)
+        self._filename = os.path.normpath(filename)
+        # self.dirname = dirname
+        # self.filename = filename
+        self.score = score
+        self.whole_path_matching = whole_path_matching
+        self._match_start_offset = match_start
+        self._match_end_offset = match_end
+        self.is_selected = is_selected
+
+    def _get_match_target(self):
+        if self.whole_path_matching:
+            return self.filepath
+        else:
+            return self.filename
+    match_target = property(_get_match_target)
+
+    def _get_display_name(self):
+        return self.filepath
+    display_name = property(_get_display_name)
+
+    def _get_dirname(self):
+        return self._dirname
+    def _set_dirname(self, name):
+        if name:
+            self._dirname = os.path.normpath(name)
+        else:
+            self._dirname = ""
+    dirname = property(_get_dirname, _set_dirname)
+
+    def _get_filename(self):
+        return self._filename
+    def _set_filename(self, name):
+        if name:
+            self._filename = os.path.normpath(name)
+        else:
+            self._filename = ""
+    filename = property(_get_filename, _set_filename)
+
+    def _get_filepath(self):
+        return os.path.normpath(os.path.join(self._dirname, self._filename))
+    filepath = property(_get_filepath)
+
+    def _start_of_basename_in_filepath(self):
+        return len(os.path.normpath(os.path.join(self._dirname, "x"))) - 1
+
+    def _get_match_start(self):
+        if self.whole_path_matching:
+            return self._match_start_offset
+        else:
+            return self._start_of_basename_in_filepath() + self._match_start_offset
+    def _set_match_start(self, v):
+        self._match_start_offset = v
+    match_start = property(_get_match_start, _set_match_start)
+
+    def _get_match_end(self):
+        if self.whole_path_matching:
+            return self._match_end_offset
+        else:
+            return self._start_of_basename_in_filepath() + self._match_end_offset
+    def _set_match_end(self, v):
+        self._match_end_offset = v
+    match_end = property(_get_match_end, _set_match_end)
+
+    def __lt__(self, other):
+        return self.score < other.score
+
+# }}}1
+
+# Controllers {{{1
+# ==============================================================================
+
+class Searcher(object): # {{{2
 
     class PageBackwardEventException(Exception):
         pass
@@ -789,8 +820,9 @@ class Searcher(object):
                     items, self.status_bar_extra_info = page_forward_event_handler(e)
             finally:
                 self.output.cleanup()
+# }}}2
 
-class DirectorySource(object):
+class DirectorySource(object): # {{{2
 
     dot_dirs_ignore_pattern = None
 
@@ -947,8 +979,9 @@ class DirectorySource(object):
                             if not fltr(dirs[i], dirname):
                                 del dirs[i]
         return results
+# }}}2
 
-class GitIgnoreFilter(object):
+class GitIgnoreFilter(object): # {{{2
     # Optimization
     lastdir = None
     last_path_filter = None
@@ -1028,8 +1061,9 @@ class GitIgnoreFilter(object):
                 if fnmatch.fnmatch(fn, f):
                     return False
         return True
+# }}}2
 
-class FuzzyRanker(object):
+class FuzzyRanker(object): # {{{2
 
     class IncompleteRegularExpressionPatternException(Exception):
         pass
@@ -1095,8 +1129,9 @@ class FuzzyRanker(object):
                 agg_score += score
         # return agg_score + self.weight_f(item), match_start, match_end
         return agg_score, match_start, match_end
+# }}}2
 
-class Runner(object):
+class Runner(object): # {{{2
 
     def __init__(self, args):
         self.args = args
@@ -1145,8 +1180,9 @@ class Runner(object):
                 sys.exit(error_msg)
             else:
                 curses_error(error_msg)
+# }}}2
 
-class DirRun(Runner):
+class DirRun(Runner): # {{{2
 
     def __init__(self, args):
         self.args = args
@@ -1298,8 +1334,14 @@ class DirRun(Runner):
         else:
             status_bar_extra_info = "(multiple search paths)"
         return status_bar_extra_info
+# }}}2
 
-def build_arg_parser():
+# }}}1
+
+# CLI {{{1
+# ==============================================================================
+
+def build_arg_parser():  #{{{2
     parser = argparse.ArgumentParser(description=__description__)
     parser.add_argument("--version", action="version", version="FuzzySnake " + __version__)
 
@@ -1920,8 +1962,9 @@ def build_arg_parser():
     parser.set_defaults(action_type="edit")
 
     return parser.parse_args()
+# }}}2
 
-class SetPrintAction(argparse.Action):
+class SetPrintAction(argparse.Action): # {{{2
     def __call__(self,
             parser,
             namespace,
@@ -1932,8 +1975,9 @@ class SetPrintAction(argparse.Action):
             namespace.action_target = "-"
         else:
             namespace.action_target = values
+# }}}2
 
-class SetCustomCommandAction(argparse.Action):
+class SetCustomCommandAction(argparse.Action): # {{{2
     def __call__(self,
             parser,
             namespace,
@@ -1941,11 +1985,15 @@ class SetCustomCommandAction(argparse.Action):
             option_string=None):
         namespace.action_type = "command"
         namespace.action_target = values
+# }}}2
 
-if __name__ == '__main__':
+# }}}1
+
+if __name__ == '__main__': # {{{1
     args = build_arg_parser()
     runner = DirRun(args)
     if args.action_type == "list-and-exit":
         runner.print_list()
     else:
         runner.run()
+# }}}1
