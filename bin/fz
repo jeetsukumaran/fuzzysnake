@@ -114,34 +114,20 @@ def truncate_middle(line, length=70, truncation_str="..."):
 # CURSES {{{1
 # ==============================================================================
 
-class SandboxedStdOut(object): # {{{2
-
-    def __init__(self, suppress_window=False):
-        self.suppress_window = suppress_window
+class Subscreen(object): # {{{2
 
     def __enter__(self):
+
         # clone stdout: this allows us to open
         # the curses window in a subshell and
         # print the result to the "real" stdout
         # on exit
-        if self.suppress_window:
-            return
         self.prev_stdout_fd = os.dup(sys.stdout.fileno())
         self.new_stdout_clone = os.open("/dev/tty", os.O_WRONLY)
         os.dup2(self.new_stdout_clone, sys.stdout.fileno()) # 1
         self.prev_stdout = sys.stdout
 
-    def __exit__(self, exc_type, exc_value, traceback):
-        if self.suppress_window:
-            return
-        os.dup2(self.prev_stdout_fd, self.prev_stdout.fileno())
-        self.stdout = self.prev_stdout
-        # os.dup2(self.old_stdout, 1)
-# }}}2
-
-class Screen(object):
-
-    def __enter__(self):
+        # initialize screen
         self.stdscr = curses.initscr()
         curses.noecho()
         curses.cbreak()
@@ -153,12 +139,20 @@ class Screen(object):
         return self.stdscr
 
     def __exit__(self, exc_type, exc_value, traceback):
+
+        # restore terminal
         # self.stdscr.keypad(0)
         curses.echo()
         curses.nocbreak()
         curses.endwin()
 
-class Viewer(object): # {{{2
+        # restore standard output
+        os.dup2(self.prev_stdout_fd, self.prev_stdout.fileno())
+        self.stdout = self.prev_stdout
+        # os.dup2(self.old_stdout, 1)
+# }}}2
+
+class Display(object): # {{{2
 
     FIRST_ITEM_ROW_OFFSET = 3
     STATUS_BAR_OFFSET     = 2
@@ -194,10 +188,10 @@ class Viewer(object): # {{{2
         self.start(nrows=nrows)
 
     def start(self, nrows=None):
-        cheight, cwidth = self.get_console_dimensions()
+        cv_height, cv_width = self.content_pad_available_display_dimensions()
         if nrows is None:
-            nrows = cheight
-        self.content_pad = curses.newpad(nrows, cwidth)
+            nrows = cv_height
+        self.content_pad = curses.newpad(nrows, cv_width)
 
         curses.use_default_colors()
 
@@ -238,9 +232,9 @@ class Viewer(object): # {{{2
     def content_pad_dimensions(self):
         return self.content_pad.getmaxyx()
 
-    def content_pad_visible_dimensions(self):
+    def content_pad_available_display_dimensions(self):
         screen_height, screen_width = self.screen_dimensions()
-        return screen_height - 3
+        return screen_height - 3, screen_width
 
     def resize_content_pad(self, nrows):
         self.content_pad.resize(nrows, self.screen_dimensions()[1])
@@ -260,18 +254,18 @@ class Viewer(object): # {{{2
     def error(self, message, erase=True):
         if erase:
             self.content_pad.erase()
-        self.write_status_bar(message, self.error_color, refresh_screen=True)
+        self.write_status_bar(message, self.error_color, refresh=True)
         self.stdscr.move(height - self.STATUS_BAR_OFFSET, min(len(message), self.screen_dimensions()[1]-1))
         self.pause_for_keypress()
 
-    def write_status_bar(self, s, color=None, refresh_screen=True):
+    def write_status_bar(self, s, color=None, refresh=True):
         if color is None:
             color = self.status_bar_color
         height, width = self.screen_dimensions()
         # self.stdscr.clrtoeol()
         padded_message = s.ljust(width-1)[:width-1]
         self.stdscr.addstr(height - self.STATUS_BAR_OFFSET, 0, padded_message, color)
-        if refresh_screen:
+        if refresh:
             self.stdscr.refresh()
 
     ### Rendering (Content)
@@ -287,7 +281,7 @@ class Viewer(object): # {{{2
         height, width = self.content_pad_dimensions()
         row = height - idx - 1
         if row < 0:
-            raise Viewer.OutOfWindowBoundsException
+            raise Display.OutOfWindowBoundsException
         self.content_pad.move(row, 0)
         display_name = truncate_middle(item.display_name, width-3) # account for leader
         weight = curses.A_NORMAL
@@ -314,16 +308,12 @@ class Viewer(object): # {{{2
         else:
             self.content_pad.addstr(display_name, color | weight)
 
-    ### Display
+    ### Displaying
 
-    def update_display(self, current_item_index):
-        # self.stdscr.refresh()
-        # self.content_pad.refresh(0, 0, 0, 0, 20, 20)
-
+    def refresh(self, current_item_index):
         screen_height, screen_width = self.screen_dimensions()
         content_height, content_width = self.content_pad_dimensions()
-
-        available_height = self.content_pad_visible_dimensions()
+        available_height = self.content_pad_available_display_dimensions()[0]
         if content_height < available_height:
             screen_top = screen_height - content_height - 2
             content_top = 0
@@ -337,7 +327,6 @@ class Viewer(object): # {{{2
                 content_top = 0
             else:
                 content_top = current_item_row - half_height - 1
-
         self.stdscr.noutrefresh()
         self.content_pad.noutrefresh(
                 content_top,
@@ -396,93 +385,44 @@ class Viewer(object): # {{{2
         ch = self.getch(blocking=True)
         return ch
 
+    def check_for_cancel(self):
+        ch = self.getch(blocking=False)
+        # self.window.nodelay(1)
+        # ch = self.window.getch()
+        if ch == 27:
+            next_char = self.stdscr.getch()
+            if next_char == -1:
+                raise KeyboardInterrupt()
+        # self.window.nodelay(0)
     ### Actions
 
     def get_progress_ticker(self):
-        return ProgressTicker(screen=self, color=self.spinner_color)
+        return ProgressTicker(display=self, color=self.spinner_color)
 
 # }}}2
 
-class X1(object):
-    pass
-
-def t1():
-    import random
-    nrows = 80
-    with Screen() as stdscr:
-        viewer = Viewer(stdscr=stdscr, nrows=nrows)
-        # viewer.start(nrows)
-        viewer.write_status_bar("hello")
-        current_item_index = 0
-        while True:
-            viewer.clear_content()
-            for idx in range(nrows):
-                s = "This is item {}".format(idx)
-                if idx == nrows - 1:
-                    s = s + " (last)"
-                elif idx == 0:
-                    s = s + " (first)"
-                item = X1()
-                item.display_name = s
-                item.is_selected = False
-                item.score = 100
-                item.match_start = 0
-                item.match_end = 0
-                viewer.render_content_item(idx=idx,
-                        item=item,
-                        is_current_item= idx == current_item_index,
-                        query="hello")
-            viewer.update_display(current_item_index)
-            ch = viewer.pause_for_keypress()
-            if ch == ord("q"):
-                break
-            elif ch == ord("j"):
-                current_item_index -= 1
-            elif ch == ord("k"):
-                current_item_index += 1
-            if current_item_index < 0:
-                current_item_index = 0
-            elif current_item_index >= nrows:
-                current_item_index = nrows - 1
-        # viewer.stop()
-
-
-try:
-    t1()
-except:
-    Viewer.stop()
-    raise
-sys.exit(0)
-
 class ProgressTicker(object): # {{{2
 
-    def __init__(self, screen, color):
-        self.screen = screen
+    def __init__(self, display, color):
+        self.display = display
         self.color = color
         self.current_step = 0
         self.spinner_cycle = itertools.cycle(["|", "/", "-", "\\", "-",])
 
     def check_for_cancel(self):
-        self.window.nodelay(1)
-        ch = self.window.getch()
-        if ch == 27:
-            next_char = self.window.getch()
-            if next_char == -1:
-                raise KeyboardInterrupt()
-        self.window.nodelay(0)
+        return self.display.check_for_cancel()
 
     def update(self, message):
-        if self.suppress_window:
-            return
         self.current_step += 1
-        height, width = get_screen_dimensions()
-        # self.window.addstr("[" + next(self.spinner_cycle) + "] " + message)
         s0 = next(self.spinner_cycle) + " " + message
-        s1 = s0.ljust(width-1)[:width-1]
-        self.window.move(height - STATUS_BAR_OFFSET, 0)
-        self.window.addstr(s1, self.spinner_color)
-        self.window.move(height - STATUS_BAR_OFFSET, min(len(s0), width-1))
-        self.window.refresh()
+        self.display.write_status_bar(s0, color=self.color, refresh=True)
+
+        # height, width = get_screen_dimensions()
+        # # self.window.addstr("[" + next(self.spinner_cycle) + "] " + message)
+        # self.window.move(height - STATUS_BAR_OFFSET, 0)
+        # self.window.addstr(s1, self.spinner_color)
+        # self.window.move(height - STATUS_BAR_OFFSET, min(len(s0), width-1))
+        # self.window.refresh()
 
 # }}}2
 
@@ -1077,6 +1017,7 @@ class DirectorySource(object): # {{{2
     dot_dirs_ignore_pattern = None
 
     def __init__(self,
+            display,
             target_filename_patterns=None,
             ignore_directories=True,
             ignore_files=True,
@@ -1086,6 +1027,7 @@ class DirectorySource(object): # {{{2
             files_to_exclude=None,
             filter_for_glob_names=None,
             max_recursion_depth=None):
+        self.display = display
         self.ignore_directories = ignore_directories
         self.ignore_files = ignore_files
         self.respect_gitignores = respect_gitignores
@@ -1157,77 +1099,76 @@ class DirectorySource(object): # {{{2
             self.find_parent_gis(start_dir)
         if results is None:
             results = []
-        with SandboxedStdOut(suppress_window=suppress_progress_feedback) as sb:
-            with CursesProgressTicker(suppress_window=suppress_progress_feedback) as progress:
-                total_items_scanned = 0
-                for search_idx, (dirname, dirs, filenames) in enumerate(walk(start_dir)):
-                    progress.check_for_cancel()
-                    # dirname = os.path.normpath(dirname)
-                    total_items_scanned += (1 + len(dirs) + len(filenames))
-                    if search_idx % 100 == 0:
-                        progress.update("Scanning: found {} out of {} names".format(len(results), total_items_scanned))
-                    if self.max_recursion_depth is not None:
-                        recursion_level = dirname.count(os.path.sep)
-                        if recursion_level == self.max_recursion_depth:
-                            del dirs[:]
-                        elif recursion_level > self.max_recursion_depth:
-                            continue
-                    if self.respect_gitignores and ".git" in dirs:
-                        giexclude = os.path.join('.git', 'info', 'exclude')
-                        if os.path.isfile(os.path.join(dirname, giexclude)):
-                            gief = GitIgnoreFilter(dirname, giexclude)
-                            self.git_exclude_filters.append(gief)
-                    if DirectorySource.dot_dirs_ignore_pattern.match(dirname):
-                        continue
-                    if self.dirs_to_exclude is not None and self.dirs_to_exclude.match(dirname):
-                        continue
-                    names = []
-                    if not self.ignore_files:
-                        for f in filenames:
-                            if ((self.files_to_exclude is None or not self.files_to_exclude.match(f))
-                                    and (self.target_filename_pattern is None or self.target_filename_pattern.match(f))
-                                    and (self.filter_for_glob_names is None or any(fnmatch.fnmatch(f, gf) for gf in self.filter_for_glob_names))
-                                    ):
-                                # if self.paths_to_exclude is not None:
-                                #     # only do this if actual paths to exclude
-                                #     ff = os.path.join(dirname, f)
-                                #     if not self.paths_to_exclude.match(f):
-                                #         names.append(f)
-                                # else:
-                                #     names.append(f)
-                                names.append(f)
-                    if not self.ignore_directories:
-                        for candidate_dir in dirs:
-                            if ((not DirectorySource.dot_dirs_ignore_pattern.match(candidate_dir))
-                                    and (self.dirs_to_exclude is None or not self.dirs_to_exclude.match(candidate_dir))
-                                    and (self.filter_for_glob_names is None or all(fnmatch.fnmatch(candidate_dir, gf) for gf in self.filter_for_glob_names))
-                                    ):
-                                names.append(candidate_dir)
-                    if self.respect_gitignores and '.gitignore' in filenames:
-                        gif = GitIgnoreFilter(dirname, '.gitignore', self.git_exclude_filters)
-                        self.filters.append((dirname, gif))
-                    while self.filters: # find filter that applies to current path
-                        path, filter_obj = self.filters[-1]
-                        if dirname.startswith(path):
-                            break
-                        self.filters.pop()
-                    fltr = None
-                    if self.filters:
-                        fltr = self.filters[-1][1] # grab filter object of last filter entry
-                    for name in names:
-                        if fltr is None or fltr(name, dirname):
-                            entry = Entry(dirname=dirname,
-                                    filename=name,
-                                    score=len(results),
-                                    match_start=0,
-                                    match_end=0,
-                                    whole_path_matching=False)
-                            results.append(entry)
-                    # have to delete the names manually
-                    if fltr is not None:
-                        for i in range(len(dirs) - 1, -1, -1):
-                            if not fltr(dirs[i], dirname):
-                                del dirs[i]
+        progress = display.get_progress_ticker()
+        total_items_scanned = 0
+        for search_idx, (dirname, dirs, filenames) in enumerate(walk(start_dir)):
+            progress.check_for_cancel()
+            # dirname = os.path.normpath(dirname)
+            total_items_scanned += (1 + len(dirs) + len(filenames))
+            if search_idx % 100 == 0:
+                progress.update("Scanning: found {} out of {} names".format(len(results), total_items_scanned))
+            if self.max_recursion_depth is not None:
+                recursion_level = dirname.count(os.path.sep)
+                if recursion_level == self.max_recursion_depth:
+                    del dirs[:]
+                elif recursion_level > self.max_recursion_depth:
+                    continue
+            if self.respect_gitignores and ".git" in dirs:
+                giexclude = os.path.join('.git', 'info', 'exclude')
+                if os.path.isfile(os.path.join(dirname, giexclude)):
+                    gief = GitIgnoreFilter(dirname, giexclude)
+                    self.git_exclude_filters.append(gief)
+            if DirectorySource.dot_dirs_ignore_pattern.match(dirname):
+                continue
+            if self.dirs_to_exclude is not None and self.dirs_to_exclude.match(dirname):
+                continue
+            names = []
+            if not self.ignore_files:
+                for f in filenames:
+                    if ((self.files_to_exclude is None or not self.files_to_exclude.match(f))
+                            and (self.target_filename_pattern is None or self.target_filename_pattern.match(f))
+                            and (self.filter_for_glob_names is None or any(fnmatch.fnmatch(f, gf) for gf in self.filter_for_glob_names))
+                            ):
+                        # if self.paths_to_exclude is not None:
+                        #     # only do this if actual paths to exclude
+                        #     ff = os.path.join(dirname, f)
+                        #     if not self.paths_to_exclude.match(f):
+                        #         names.append(f)
+                        # else:
+                        #     names.append(f)
+                        names.append(f)
+            if not self.ignore_directories:
+                for candidate_dir in dirs:
+                    if ((not DirectorySource.dot_dirs_ignore_pattern.match(candidate_dir))
+                            and (self.dirs_to_exclude is None or not self.dirs_to_exclude.match(candidate_dir))
+                            and (self.filter_for_glob_names is None or all(fnmatch.fnmatch(candidate_dir, gf) for gf in self.filter_for_glob_names))
+                            ):
+                        names.append(candidate_dir)
+            if self.respect_gitignores and '.gitignore' in filenames:
+                gif = GitIgnoreFilter(dirname, '.gitignore', self.git_exclude_filters)
+                self.filters.append((dirname, gif))
+            while self.filters: # find filter that applies to current path
+                path, filter_obj = self.filters[-1]
+                if dirname.startswith(path):
+                    break
+                self.filters.pop()
+            fltr = None
+            if self.filters:
+                fltr = self.filters[-1][1] # grab filter object of last filter entry
+            for name in names:
+                if fltr is None or fltr(name, dirname):
+                    entry = Entry(dirname=dirname,
+                            filename=name,
+                            score=len(results),
+                            match_start=0,
+                            match_end=0,
+                            whole_path_matching=False)
+                    results.append(entry)
+            # have to delete the names manually
+            if fltr is not None:
+                for i in range(len(dirs) - 1, -1, -1):
+                    if not fltr(dirs[i], dirname):
+                        del dirs[i]
         return results
 # }}}2
 
@@ -1381,21 +1322,120 @@ class FuzzyRanker(object): # {{{2
         return agg_score, match_start, match_end
 # }}}2
 
-class Runner(object): # {{{2
+class Controller(object): # {{{2
 
-    def __init__(self, args):
+    ### Life-cycle
+
+    def __init__(self, display, args):
+        self.display = display
         self.args = args
         self.editor_path = os.environ.get("FUZZYSNAKE_EDITOR", os.environ.get("EDITOR", "vi"))
 
-    def find(self):
-        raise NotImplementedError()
+    ### Data Accession
 
-    def run(self):
-        found = self.find()
-        if not found:
-            sys.exit(1) # raise error to let parent shell know nothing was selected
-        filepaths = [entry.filepath for entry in found]
-        self.apply_action(filepaths, as_subprocess=False)
+    def scan_search_paths(self, items=None, exit_on_interrupt=False, interrupt_exit_value=1):
+        if items is None:
+            items = []
+        respect_gitignores = not self.args.include_gitignores
+        if self.args.directory_search_mode:
+            ignore_directories = False
+            ignore_files = True
+        else:
+            ignore_directories = True
+            ignore_files = False
+        if not self.args.search_paths:
+            self.args.search_paths = ["."]
+        try:
+            for path in self.args.search_paths:
+                if path == "-":
+                    if sys.platform.startswith('win'):
+                        raise NotImplementedError("Reading from standard input is not supported on this system at this time")
+                    # NOTE: To allow us to continue to get input from the tty
+                    # standard input in the curses window in the interactive loop,
+                    # We do *not* read from `sys.stdin` directly here. Instead we open
+                    # a new file object bound to the system file descriptor '0'
+                    # (standard input), and read from that. After this is done and
+                    # closed (using the context manager), we must set sys.stdin's
+                    # file descriptor to the tty opened for reading.
+                    with os.fdopen(0, 'r') as src:
+                        for item in src.read().split("\n"):
+                            item = unicode_str(item)
+                            item = os.path.expandvars(os.path.expanduser(item))
+                            dirname = os.path.dirname(item)
+                            basename = os.path.basename(item)
+                            entry = Entry(dirname=dirname,
+                                    filename=basename,
+                                    score=len(items),
+                                    match_start=0,
+                                    match_end=0,
+                                    whole_path_matching=False)
+                            items.append(entry)
+                    sys.stdin = open("/dev/tty", "r")
+                else:
+                    # Create a new sourcer on each pass.
+                    # A little inefficient, but avoids cross-application
+                    # of .gitignore etc. filters
+                    ds = DirectorySource(
+                            display=display,
+                            target_filename_patterns=args.target_filename_pattern,
+                            ignore_directories=ignore_directories,
+                            ignore_files=ignore_files,
+                            respect_gitignores=respect_gitignores,
+                            include_hidden=args.include_hidden,
+                            dirs_to_exclude=args.dirs_to_exclude,
+                            files_to_exclude=args.files_to_exclude,
+                            filter_for_glob_names=args.filter_for_glob_names,
+                            max_recursion_depth=args.max_recursion_depth)
+                    path = os.path.expandvars(os.path.expanduser(path))
+                    ds.fetch(start_dir=path,
+                            results=items,
+                            suppress_progress_feedback=args.no_progress_window)
+        except KeyboardInterrupt:
+            sys.exit(interrupt_exit_value)
+        return items
+
+    def page_backward_event_handler(self, event_exception_obj):
+        self.args.search_paths = sorted(set([os.path.normpath(os.path.relpath(os.path.abspath(os.path.join(path, os.pardir)))) for path in self.args.search_paths]))
+        items = self.scan_search_paths()
+        return (items, self.get_status_bar_extra_info())
+
+    def page_forward_event_handler(self, event_exception_obj):
+        if self.args.directory_search_mode:
+            new_dirs = []
+            for child in event_exception_obj.selected_items:
+                new_dir = child.filepath
+                # only add new_dir if there is at least on child directory
+                for sub_dir in os.listdir(new_dir):
+                    if os.path.isdir(os.path.join(new_dir, sub_dir)):
+                        new_dirs.append(os.path.normpath(os.path.relpath(new_dir)))
+                        break
+                else:
+                    # ? should we add parent?
+                    # new_dirs.append(child.dirname)
+                    pass
+            new_dirs = sorted(set(new_dirs))
+            if not new_dirs:
+                curses_error("No valid sub-directories found in new search path(s)")
+            else:
+                self.args.search_paths = new_dirs
+            items = self.scan_search_paths()
+            return (items, self.get_status_bar_extra_info())
+        else:
+            filepaths = [entry.filepath for entry in event_exception_obj.selected_items]
+            if not filepaths:
+                curses_error("No valid files found or selected")
+            else:
+                self.apply_action(filepaths, as_subprocess=True)
+                # execute_command(self.editor_path, filepaths, verbose=not self.args.quiet, as_subprocess=True)
+            items = self.scan_search_paths()
+            return (items, self.get_status_bar_extra_info())
+
+    def get_status_bar_extra_info(self):
+        if len(self.args.search_paths) == 1:
+            status_bar_extra_info = "{}".format(os.path.normpath(os.path.abspath(self.args.search_paths[0])))
+        else:
+            status_bar_extra_info = "(multiple search paths)"
+        return status_bar_extra_info
 
     def apply_action(self, filepaths, as_subprocess=False):
         if args.action_type == "edit":
@@ -1430,76 +1470,28 @@ class Runner(object): # {{{2
                 sys.exit(error_msg)
             else:
                 curses_error(error_msg)
-# }}}2
 
-class DirRun(Runner): # {{{2
+    def run(self):
+        selected = self.run_query()
+        if not selected:
+            sys.exit(1) # raise error to let parent shell know nothing was selected
+        filepaths = [entry.filepath for entry in found]
+        self.apply_action(filepaths, as_subprocess=False)
 
-    def __init__(self, args):
-        self.args = args
-        self.editor_path = os.environ.get("FUZZYSNAKE_EDITOR", os.environ.get("EDITOR", "vi"))
+    def print_list(self,
+            out=None,
+            mirror_to_stderr=False):
+        if out is None:
+            out = sys.stdout
+        items = self.scan_search_paths()
+        for item in items:
+            item_str = "{}\n".format(item.filepath)
+            out.write(item_str)
+            if mirror_to_stderr:
+                sys.stderr.write(item_str)
 
-    def fetch(self, items=None):
-        if items is None:
-            items = []
-        respect_gitignores = not self.args.include_gitignores
-        if self.args.directory_search_mode:
-            ignore_directories = False
-            ignore_files = True
-        else:
-            ignore_directories = True
-            ignore_files = False
-        if not self.args.paths:
-            self.args.paths = ["."]
-        try:
-            for path in self.args.paths:
-                if path == "-":
-                    if sys.platform.startswith('win'):
-                        raise NotImplementedError("Reading from standard input is not supported on this system at this time")
-                    # NOTE: To allow us to continue to get input from the tty
-                    # standard input in the curses window in the interactive loop,
-                    # We do *not* read from `sys.stdin` directly here. Instead we open
-                    # a new file object bound to the system file descriptor '0'
-                    # (standard input), and read from that. After this is done and
-                    # closed (using the context manager), we must set sys.stdin's
-                    # file descriptor to the tty opened for reading.
-                    with os.fdopen(0, 'r') as src:
-                        for item in src.read().split("\n"):
-                            item = unicode_str(item)
-                            item = os.path.expandvars(os.path.expanduser(item))
-                            dirname = os.path.dirname(item)
-                            basename = os.path.basename(item)
-                            entry = Entry(dirname=dirname,
-                                    filename=basename,
-                                    score=len(items),
-                                    match_start=0,
-                                    match_end=0,
-                                    whole_path_matching=False)
-                            items.append(entry)
-                    sys.stdin = open("/dev/tty", "r")
-                else:
-                    # Create a new sourcer on each pass.
-                    # A little inefficient, but avoids cross-application
-                    # of .gitignore etc. filters
-                    ds = DirectorySource(
-                            target_filename_patterns=args.target_filename_pattern,
-                            ignore_directories=ignore_directories,
-                            ignore_files=ignore_files,
-                            respect_gitignores=respect_gitignores,
-                            include_hidden=args.include_hidden,
-                            dirs_to_exclude=args.dirs_to_exclude,
-                            files_to_exclude=args.files_to_exclude,
-                            filter_for_glob_names=args.filter_for_glob_names,
-                            max_recursion_depth=args.max_recursion_depth)
-                    path = os.path.expandvars(os.path.expanduser(path))
-                    ds.fetch(start_dir=path,
-                            results=items,
-                            suppress_progress_feedback=args.no_progress_window)
-        except KeyboardInterrupt:
-            pass
-        return items
-
-    def find(self):
-        items = self.refresh_items()
+    def run_query(self):
+        items = self.scan_search_paths()
         if not items:
             sys.stderr.write("No valid files or directories found.\n")
             sys.exit(0)
@@ -1523,67 +1515,6 @@ class DirRun(Runner): # {{{2
             sys.exit(1) # error so no process will execute anything on blank output
         return found
 
-    def print_list(self,
-            out=None,
-            mirror_to_stderr=False):
-        if out is None:
-            out = sys.stdout
-        try:
-            items = self.fetch()
-        except KeyboardInterrupt:
-            sys.exit(1) # error so no process will execute anything on blank output
-        for item in items:
-            item_str = "{}\n".format(item.filepath)
-            out.write(item_str)
-            if mirror_to_stderr:
-                sys.stderr.write(item_str)
-
-    def page_backward_event_handler(self, event_exception_obj):
-        self.args.paths = sorted(set([os.path.normpath(os.path.relpath(os.path.abspath(os.path.join(path, os.pardir)))) for path in self.args.paths]))
-        return (self.refresh_items(), self.get_status_bar_extra_info())
-
-    def page_forward_event_handler(self, event_exception_obj):
-        if self.args.directory_search_mode:
-            new_dirs = []
-            for child in event_exception_obj.selected_items:
-                new_dir = child.filepath
-                # only add new_dir if there is at least on child directory
-                for sub_dir in os.listdir(new_dir):
-                    if os.path.isdir(os.path.join(new_dir, sub_dir)):
-                        new_dirs.append(os.path.normpath(os.path.relpath(new_dir)))
-                        break
-                else:
-                    # ? should we add parent?
-                    # new_dirs.append(child.dirname)
-                    pass
-            new_dirs = sorted(set(new_dirs))
-            if not new_dirs:
-                curses_error("No valid sub-directories found in new search path(s)")
-            else:
-                self.args.paths = new_dirs
-            return (self.refresh_items(), self.get_status_bar_extra_info())
-        else:
-            filepaths = [entry.filepath for entry in event_exception_obj.selected_items]
-            if not filepaths:
-                curses_error("No valid files found or selected")
-            else:
-                self.apply_action(filepaths, as_subprocess=True)
-                # execute_command(self.editor_path, filepaths, verbose=not self.args.quiet, as_subprocess=True)
-            return (self.refresh_items(), self.get_status_bar_extra_info())
-
-    def refresh_items(self):
-        try:
-            items = self.fetch()
-        except KeyboardInterrupt:
-            sys.exit(1) # error so no process will execute anything on blank output
-        return items
-
-    def get_status_bar_extra_info(self):
-        if len(self.args.paths) == 1:
-            status_bar_extra_info = "{}".format(os.path.normpath(os.path.abspath(self.args.paths[0])))
-        else:
-            status_bar_extra_info = "(multiple search paths)"
-        return status_bar_extra_info
 # }}}2
 
 # }}}1
@@ -1591,13 +1522,13 @@ class DirRun(Runner): # {{{2
 # CLI {{{1
 # ==============================================================================
 
-def build_arg_parser():  #{{{2
+def parse_cli_args():  #{{{2
     parser = argparse.ArgumentParser(description=__description__)
     parser.add_argument("--version", action="version", version="FuzzySnake " + __version__)
 
     search_options_section = parser.add_argument_group("Search Options")
     search_options_section.add_argument(
-            "paths",
+            "search_paths",
             metavar="DIR",
             nargs="*",
             help="Top-level directory path(s) to search. Defaults to "
@@ -2240,10 +2171,66 @@ class SetCustomCommandAction(argparse.Action): # {{{2
 # }}}1
 
 if __name__ == '__main__': # {{{1
-    args = build_arg_parser()
-    runner = DirRun(args)
-    if args.action_type == "list-and-exit":
-        runner.print_list()
-    else:
-        runner.run()
+    args = parse_cli_args()
+    with Subscreen() as stdscr:
+        display = Display(stdscr=stdscr)
+        controller = Controller(display=display, args=args)
+        if args.action_type == "list-and-exit":
+            controller.print_list()
+        else:
+            controller.run()
+# }}}1
+
+# Scratch {{{1
+# ==============================================================================
+# class X1(object):
+#     pass
+
+# def t1():
+#     import random
+#     nrows = 80
+#     with Screen() as stdscr:
+#         display = Display(stdscr=stdscr, nrows=nrows)
+#         # display.start(nrows)
+#         display.write_status_bar("hello")
+#         current_item_index = 0
+#         while True:
+#             display.clear_content()
+#             for idx in range(nrows):
+#                 s = "This is item {}".format(idx)
+#                 if idx == nrows - 1:
+#                     s = s + " (last)"
+#                 elif idx == 0:
+#                     s = s + " (first)"
+#                 item = X1()
+#                 item.display_name = s
+#                 item.is_selected = False
+#                 item.score = 100
+#                 item.match_start = 0
+#                 item.match_end = 0
+#                 display.render_content_item(idx=idx,
+#                         item=item,
+#                         is_current_item= idx == current_item_index,
+#                         query="hello")
+#             display.refresh(current_item_index)
+#             ch = display.pause_for_keypress()
+#             if ch == ord("q"):
+#                 break
+#             elif ch == ord("j"):
+#                 current_item_index -= 1
+#             elif ch == ord("k"):
+#                 current_item_index += 1
+#             if current_item_index < 0:
+#                 current_item_index = 0
+#             elif current_item_index >= nrows:
+#                 current_item_index = nrows - 1
+#         # display.stop()
+
+
+# try:
+#     t1()
+# except:
+#     Display.stop()
+#     raise
+# sys.exit(0)
 # }}}1
