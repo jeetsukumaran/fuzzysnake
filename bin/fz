@@ -149,7 +149,6 @@ class Subscreen(object): # {{{2
         # restore standard output
         os.dup2(self.prev_stdout_fd, self.prev_stdout.fileno())
         self.stdout = self.prev_stdout
-        # os.dup2(self.old_stdout, 1)
 # }}}2
 
 class Display(object): # {{{2
@@ -203,6 +202,7 @@ class Display(object): # {{{2
         self.content_vscroll_offset = 0
         self._is_input_blocking = None
         self.start(nrows=nrows)
+        self.query_length = 0
 
     def start(self, nrows=None):
         cv_height, cv_width = self.content_pad_available_display_dimensions()
@@ -287,9 +287,6 @@ class Display(object): # {{{2
 
     ### Rendering (Content)
 
-    def clear_content(self):
-        self.content_pad.erase()
-
     def render_content_item(self,
             idx,
             item,
@@ -325,7 +322,51 @@ class Display(object): # {{{2
         else:
             self.content_pad.addstr(display_name, color | weight)
 
+    def render_query(
+            query,
+            match_type,
+            whole_path_matching,
+            status_bar_extra_info=None):
+        height, width = self.window_size()
+        status_bar_components = []
+        if match_type == "fuzzy":
+            prompt = "? "
+            status_bar_components.append("[^R] expression: fuzzy  ")
+        elif match_type == "literal":
+            prompt = "= "
+            status_bar_components.append("[^R] expression: literal")
+        elif match_type == "regexp":
+            prompt = "% "
+            status_bar_components.append("[^R] expression: regular")
+        if whole_path_matching:
+            status_bar_components.append("[^D] directory match: yes")
+        else:
+            status_bar_components.append("[^D] directory match: no ")
+        status_bar = " ".join(status_bar_components)
+        if status_bar_extra_info:
+            remaining = width - len(status_bar) - 1
+            if remaining > 0:
+                status_bar += ("(" + truncate_front(status_bar_extra_info, remaining) + ")").rjust(remaining)
+        status_bar = status_bar.ljust(width-1)[:width-1]
+        self.window.move(height - STATUS_BAR_OFFSET, 0)
+        self.window.addstr(status_bar, self.status_bar_color)
+        q = prompt + query
+        self.query_length = len(q)
+        self.window.move(height - QUERY_ROW_OFFSET, 0)
+        self.window.addstr(q, self.prompt_color)
+
     ### Displaying
+
+    def clear(self):
+        self.stdscr.erase()
+
+    def clear_content(self):
+        self.content_pad.erase()
+
+    # def flush(self):
+    #     height, width = self.window_size()
+    #     self.window.move(height - QUERY_ROW_OFFSET, self.querylen)
+    #     self.window.refresh()
 
     def refresh(self, current_item_index):
         screen_height, screen_width = self.screen_dimensions()
@@ -357,12 +398,12 @@ class Display(object): # {{{2
 
     ### Input
 
-    def getch(self, blocking=None, silent=None):
+    def getch(self, blocking=None, echo=None):
         # set state
         self.is_input_blocking = blocking
-        if silent is True:
+        if echo is False:
             curses.noecho()
-        elif silent is False:
+        elif echo is True:
             curses.echo()
         ch = self.stdscr.getch()
         ### FOLLOWING HACK NOT NEEDED ANY MORE, DUE TO FOLLOWING APPROACH::
@@ -391,12 +432,12 @@ class Display(object): # {{{2
         # restore state
         if blocking:
             self.is_input_blocking = False
-        if not silent:
+        if echo:
             curses.noecho()
         return ch
 
-    def get_keycode(self, blocking=True, silent=True):
-        ch_value = self.getch(blocking=blocking, silent=silent)
+    def get_keycode(self, blocking=True, echo=False):
+        ch_value = self.getch(blocking=blocking, echo=echo)
         if ch_value == -1:
             return None
         elif ch_value == 27:
@@ -404,17 +445,22 @@ class Display(object): # {{{2
             # arrows
             # just escape? try non-blocking read to see if
             # any other characters
-            ch_value = self.getch(blocking=False, silent=silent)
+            ch_value = self.getch(blocking=False, echo=echo)
             if ch_value == -1:
                 # Nope: just escape
                 return self.KEYCODES[27]
             # other characters available
             # assuming arrow-key, we discard
             # the current and read the next
-            ch_value = self.getch(blocking=True, silent=silent)
+            ch_value = self.getch(blocking=True, echo=echo)
             return self.KEYCODES.get(-ch_value, None) # None if not handled
         else:
             return self.KEYCODES.get(ch_value, chr(ch_value))
+
+    def get_query_keycode(self, echo=False):
+        height, width = self.screen_dimensions()
+        self.stdscr.move(height - self.QUERY_ROW_OFFSET, self.query_length)
+        return self.get_keycode(blocking=True, echo=False)
 
     def pause_for_keypress(self):
         ch = self.getch(blocking=True)
@@ -439,7 +485,7 @@ class ProgressTicker(object): # {{{2
         self.spinner_cycle = itertools.cycle(["|", "/", "-", "\\", "-",])
 
     def check_for_cancel(self):
-        keych = self.display.get_keycode(blocking=False, silent=True)
+        keych = self.display.get_keycode(blocking=False, echo=False)
         if self.display.is_cancel_keycode(keych):
             return True
         return False
@@ -458,149 +504,6 @@ class ProgressTicker(object): # {{{2
 
 # }}}2
 
-
-class CursesPrinter(object):
-
-    class OutOfWindowBoundsException(Exception):
-        pass
-
-    def __init__(self):
-        self.querylen = 0
-
-    def init(self):
-
-        # setup window
-        self.window = curses.initscr()
-        curses.start_color()
-        curses.use_default_colors()
-        curses.noecho()
-
-        # color for default text
-        curses.init_pair(1, -1, -1)
-        self.default_color = curses.color_pair(1)
-
-        ## TODO: allow configuration from environmental variable or rc file!
-
-        curses.init_pair(2, curses.COLOR_GREEN, -1)
-        self.match_color = curses.color_pair(2) | curses.A_UNDERLINE
-
-        curses.init_pair(3, curses.COLOR_MAGENTA, -1)
-        self.is_selected_color = curses.color_pair(3) | curses.A_BOLD
-
-        curses.init_pair(4, -1, -1)
-        self.current_row_color = curses.color_pair(4) # note: will be reversed below
-
-        curses.init_pair(5, curses.COLOR_MAGENTA, -1)
-        self.prompt_color = curses.color_pair(5) | curses.A_BOLD
-
-        # curses.init_pair(6, curses.COLOR_GREEN, -1)
-        # self.status_bar_color = curses.color_pair(6) | curses.A_BOLD | curses.A_REVERSE
-
-        curses.init_pair(6, curses.COLOR_GREEN, curses.COLOR_BLACK)
-        self.status_bar_color = curses.color_pair(6) | curses.A_BOLD | curses.A_REVERSE
-
-        # curses.init_pair(6, -1, -1)
-        # self.status_bar_color = curses.color_pair(6) | curses.A_REVERSE
-
-    def cleanup(self):
-        curses_end()
-
-    def print_query(self,
-            query,
-            match_type,
-            whole_path_matching,
-            status_bar_extra_info=None):
-        height, width = self.window_size()
-
-        status_bar_components = []
-        if match_type == "fuzzy":
-            prompt = "? "
-            status_bar_components.append("[^R] expression: fuzzy  ")
-        elif match_type == "literal":
-            prompt = "= "
-            status_bar_components.append("[^R] expression: literal")
-        elif match_type == "regexp":
-            prompt = "% "
-            status_bar_components.append("[^R] expression: regular")
-        if whole_path_matching:
-            status_bar_components.append("[^D] directory match: yes")
-        else:
-            status_bar_components.append("[^D] directory match: no ")
-
-        status_bar = " ".join(status_bar_components)
-        if status_bar_extra_info:
-            remaining = width - len(status_bar) - 1
-            if remaining > 0:
-                status_bar += ("(" + truncate_front(status_bar_extra_info, remaining) + ")").rjust(remaining)
-        status_bar = status_bar.ljust(width-1)[:width-1]
-        self.window.move(height - STATUS_BAR_OFFSET, 0)
-        self.window.addstr(status_bar, self.status_bar_color)
-
-        q = prompt + query
-        self.querylen = len(q)
-        self.window.move(height - QUERY_ROW_OFFSET, 0)
-        self.window.addstr(q, self.prompt_color)
-
-    def print_item(self,
-            idx,
-            item,
-            is_current_row,
-            query):
-        height, width = self.window_size()
-        row = height - idx  - FIRST_ITEM_ROW_OFFSET
-        if row < 0:
-            raise CursesPrinter.OutOfWindowBoundsException
-        self.window.move(row, 0)
-        display_name = truncate_middle(item.display_name, width-3) # account for leader
-        weight = curses.A_NORMAL
-        color = self.default_color
-        if item.is_selected:
-            self.window.addstr("#", self.is_selected_color | curses.A_BOLD)
-            color = self.is_selected_color
-        else:
-            self.window.addstr(" ", self.default_color)
-        if is_current_row:
-            self.window.addstr("> ", self.default_color)
-            color = self.current_row_color
-            # to reverse all parts of the line (included matched)
-            weight = curses.A_REVERSE
-        else:
-            self.window.addstr("  ", self.default_color)
-        if item.score > 0:
-            left = display_name[:item.match_start]
-            main = display_name[item.match_start:item.match_end]
-            right = display_name[item.match_end:]
-            self.window.addstr(left, color | weight)
-            self.window.addstr(main, self.match_color | weight)
-            self.window.addstr(right, color | weight)
-        else:
-            self.window.addstr(display_name, color | weight)
-
-    def clear_query(self):
-        height, width = self.window_size()
-        q = " " * (width - 1)
-        self.window.move(height - QUERY_ROW_OFFSET, 0)
-        self.window.addstr(q, self.prompt_color)
-
-    def clear(self):
-        self.window.clear()
-
-    def flush(self):
-        height, width = self.window_size()
-        self.window.move(height - QUERY_ROW_OFFSET, self.querylen)
-        self.window.refresh()
-
-    def move(self, y, x):
-        self.window.move(y, x)
-        self.window.refresh()
-
-    def window_size(self):
-        # return self.window.getmaxyx() # not as responsive to resizing
-        # return curses.LINES, curses.COLS # not as responsive to resizing
-        return get_screen_dimensions()
-
-    def max_rows(self):
-        return get_screen_dimensions()[0]-3
 
 # }}}1
 
@@ -753,7 +656,7 @@ class Entry(object):
 # Controllers {{{1
 # ==============================================================================
 
-class Searcher(object): # {{{2
+class Selector(object): # {{{2
 
     class PageBackwardEventException(Exception):
         pass
@@ -763,59 +666,20 @@ class Searcher(object): # {{{2
             self.selected_items = selected_items
 
     def __init__(self,
+            display,
             ranker,
-            output,
             term_separator=';',
             whole_path_matching=False,
             match_type="fuzzy",
             multiselection_mode=True,
             status_bar_extra_info=None):
+        self.display = display
         self.ranker = ranker
-        self.output = output
         self.term_separator = term_separator
         self.whole_path_matching = whole_path_matching
         self.match_type = match_type
         self.multiselection_mode = multiselection_mode
         self.status_bar_extra_info = status_bar_extra_info
-
-    def _getch(self, blocking=True, silent=None):
-        if blocking:
-            # self.output.window.timeout(-1)
-            self.output.window.nodelay(0)
-        else:
-            # self.output.window.timeout(100)
-            self.output.window.nodelay(1)
-        if silent is True:
-            curses.noecho()
-        elif silent is False:
-            curses.echo()
-        ch = self.output.window.getch()
-        ### FOLLOWING HACK NOT NEEDED ANY MORE, DUE TO FOLLOWING APPROACH::
-        ###
-        ###    with os.fdopen(0, 'r') as src:
-        ###       for item in src.read().split("\n"):
-        ###            # do stuff!
-        ###    sys.stdin = open("/dev/tty", "r")
-        ###
-        # if blocking and ch == -1:
-        #     # We are here because files were read from standard input
-        #     # and now input is unavailable. This hack works on POSIX
-        #     # systems ... but ARROW keys lead to exit in the loop
-        #     # because we checking for escape (by itself) in a non-blocking
-        #     # way.
-        #     import tty
-        #     fd = sys.stdin.fileno()
-        #     tty_mode = tty.tcgetattr(fd)
-        #     tty.setcbreak(fd)
-        #     try:
-        #         ch = ord(os.read(fd, 1))
-        #     finally:
-        #         tty.tcsetattr(fd, tty.TCSAFLUSH, tty_mode)
-        #     assert isinstance(ch, int)
-        if blocking: # restore
-            # self.output.window.timeout(-1)
-            self.output.window.nodelay(0)
-        return ch
 
     def _new_heap(self, query, cur_heap):
         newHeap = []
@@ -858,59 +722,45 @@ class Searcher(object): # {{{2
 
     def _select_previous(self, current_selected, max_results):
         # Since we display from the bottom up, moving 'up' or 'previous' means
-        # moving to a *lower*-scoring result, which requires *incrementing* the
+        # moving to a *lower*-ring result, which requires *incrementing* the
         # index to move *down* the list, which is sorted incrementally by score.
-        return min(min(self.output.max_rows(), max_results-1), current_selected + 1)
+        return min(max_results, current_selected + 1)
 
     def _loop(self, current_heaps):
         heapq.heapify(current_heaps[0])
         current_query = ""
         selected = 0
         while True:
-            self.output.window.timeout(-1)
-            next_char = self._getch(blocking=True, silent=True)
+            # self.output.window.timeout(-1)
+            # keycode = self.display.get_keycode(blocking=True, echo=False)
+            keycode = self.display.get_query_keycode(echo=False)
 
-            # Escape: could be just Escape, could be Ansi escape for
-            # arrows
-            if next_char == 27:
-                # just escape? try non-blocking read to see if
-                # any other characters
-                next_char = self._getch(blocking=False, silent=True)
-                if next_char == -1:
-                    raise KeyboardInterrupt()
-                # other characters available
-                # assuming arrow-key, we discard
-                # the current and read the next
-                next_char = self._getch(blocking=True, silent=True)
-                # Up/down
-                if next_char == 65:
-                    # <UP>
-                    selected = self._select_previous(selected, len(current_heaps[-1]))
-                elif next_char == 66:
-                    # <DOWN>
-                    selected = self._select_next(selected)
-                elif next_char == 67:
-                    # <RIGHT>
-                    selected_items = self._extract_selected_from_heap(
-                            heap=current_heaps[-1],
-                            selected=selected)
-                    self.output.clear_query()
-                    raise Searcher.PageForwardEventException(selected_items)
-                elif next_char == 68:
-                    # <LEFT>
-                    self.output.clear_query()
-                    raise Searcher.PageBackwardEventException
-            elif next_char == 14:
+            if keycode == "ESC":
+                raise KeyboardInterrupt
+            elif keycode == "UP":
+                selected = self._select_previous(selected, len(current_heaps[-1]))
+            elif keycode == "DOWN":
+                selected = self._select_next(selected)
+            elif keycode == "RIGHT":
+                selected_items = self._extract_selected_from_heap(
+                        heap=current_heaps[-1],
+                        selected=selected)
+                self.display.clear_query()
+                raise Selector.PageForwardEventException(selected_items)
+            elif keycode == "LEFT":
+                self.display.clear_query()
+                raise Selector.PageBackwardEventException
+            elif keycode == "CTRL-N":
                 # <CTRL-N>: Next
                 selected = self._select_next(selected)
-            elif next_char == 16:
+            elif keycode == "CTRL-P":
                 # <CTRL-P>: Previous
                 selected = self._select_previous(selected, len(current_heaps[-1]))
-            elif next_char == 4:
+            elif keycode == "CTRL-D":
                 # <CTRL-D>: Cycle full-path vs. basename matching
                 self.whole_path_matching = not self.whole_path_matching
                 current_heaps = self._reset_search(current_query, current_heaps)
-            elif next_char == 18:
+            elif keycode == "CTRL-R":
                 # <CTRL-R>: Cycle matching-modes
                 if self.match_type == "literal":
                     self.match_type = "regexp"
@@ -919,60 +769,55 @@ class Searcher(object): # {{{2
                 else:
                     self.match_type = "fuzzy"
                 current_heaps = self._reset_search(current_query, current_heaps)
-            elif next_char == 6:
+            elif keycode == "CTRL-F":
                 # <CTRL-F>: Fuzzy-matching mode
                 self.match_type = "fuzzy"
                 current_heaps = self._reset_search(current_query, current_heaps)
-            elif next_char == 5:
+            elif keycode == "CTRL-E":
                 # <CTRL-E>: Regular-expression matching mode
                 self.match_type = "regexp"
                 current_heaps = self._reset_search(current_query, current_heaps)
-            elif next_char == 12:
+            elif keycode == "CTRL-L":
                 # <CTRL-L>: Literal or raw matching mode
                 self.match_type = "literal"
                 current_heaps = self._reset_search(current_query, current_heaps)
-            # # elif next_char == 23:
+            # # elif keycode == "CTRL-W":
             # #     # <CTRL-W>: Toggle whitespace-separated multi-search
-            # elif next_char == 20:
+            # elif keycode == "CTRL-T":
             #     # <CTRL-T>: Toggle whitespace-separated multi-term query
             #     self.whitespace_separated_multiquery = not self.whitespace_separated_multiquery
             #     current_heaps = self._reset_search(current_query, current_heaps)
-            elif next_char == 9:
+            elif keycode == "CTRL-I":
                 # <TAB>: toggle in multiselection mode; simply consume character otherwise
                 if self.multiselection_mode:
                     current_heaps[-1][selected][1].is_selected = not current_heaps[-1][selected][1].is_selected
-            elif next_char == 21:
+            elif keycode == "CTRL-U":
                 # <CTRL-U>: Unmark all in multiselection mode; simply consume character otherwise
                 if self.multiselection_mode:
                     for w, item in current_heaps[-1]:
                         item.is_selected = False
-            elif next_char == 1:
+            elif keycode == "CTRL-A":
                 # <CTRL-A>: Mark all in multiselection mode; simply consume character otherwise
                 if self.multiselection_mode:
                     for w, item in current_heaps[-1]:
                         item.is_selected = True
+            elif keycode == "CTRL-J" or keycode == "CTRL-M":
+                return self._extract_selected_from_heap(
+                        heap=current_heaps[-1],
+                        selected=selected)
+            elif keycode == "CTRL-H" or keycode == "DEL":
+                # Delete/backspace
+                if current_query != "":
+                    current_query = current_query[:-1]
+                    current_heaps.pop()
             else:
-                # Selected
-                if next_char == 10 or next_char == 13: # enter
-                    return self._extract_selected_from_heap(
-                            heap=current_heaps[-1],
-                            selected=selected)
-                selected = 0
-                if next_char in (3, 7, 26, 28):
-                    # <CTRL-C>, <CTRL-G>, <CTRL-Z>, etc.
-                    raise KeyboardInterrupt()
-                elif next_char in (8, 127):
-                    # Delete/backspace
-                    if current_query != "":
-                        current_query = current_query[:-1]
-                        current_heaps.pop()
-                else:
-                    try:
-                        current_query += chr(next_char)
-                        current_heaps.append(self._new_heap(current_query, current_heaps[-1]))
-                    except ValueError:
-                        pass
-            self._echo(current_query, current_heaps[-1], selected)
+                # normal char
+                try:
+                    current_query += chr(keycode)
+                    current_heaps.append(self._new_heap(current_query, current_heaps[-1]))
+                except ValueError:
+                    pass
+            self.render(current_query, current_heaps[-1], selected)
 
     def _extract_selected_from_heap(self, heap, selected):
         if self.multiselection_mode:
@@ -1003,9 +848,9 @@ class Searcher(object): # {{{2
             selected -= 1
         return [heap[0][1]] if heap else []
 
-    def _echo(self, current_query, heap, selected):
-        self.output.clear()
-        self.output.print_query(
+    def render(self, current_query, heap, selected):
+        self.display.clear()
+        self.display.print_query(
                 query=current_query,
                 match_type=self.match_type,
                 whole_path_matching=self.whole_path_matching,
@@ -1021,27 +866,24 @@ class Searcher(object): # {{{2
             except CursesPrinter.OutOfWindowBoundsException:
                 break
             i += 1
-        self.output.flush()
+        self.display.refresh()
 
     def run(self,
             items,
             page_backward_event_handler=None,
             page_forward_event_handler=None):
-        self.output.init()
         while True:
             try:
                 heap = [(i.score, i) for i in items]
                 heap.sort()
-                self._echo("", heap, 0)
+                self.render("", heap, 0)
                 return self._loop([heap])
-            except Searcher.PageBackwardEventException as e:
+            except Selector.PageBackwardEventException as e:
                 if page_backward_event_handler:
                     items, self.status_bar_extra_info = page_backward_event_handler(e)
-            except Searcher.PageForwardEventException as e:
+            except Selector.PageForwardEventException as e:
                 if page_forward_event_handler:
                     items, self.status_bar_extra_info = page_forward_event_handler(e)
-            finally:
-                self.output.cleanup()
 # }}}2
 
 class DirectorySource(object): # {{{2
@@ -1529,8 +1371,9 @@ class Controller(object): # {{{2
             sys.stderr.write("No valid files or directories found.\n")
             sys.exit(0)
         ranker = FuzzyRanker
-        s = Searcher(ranker=ranker,
-                output=CursesPrinter(),
+        selector = Selector(
+                display=display,
+                ranker=ranker,
                 term_separator=self.args.term_separator,
                 whole_path_matching=self.args.whole_path_match,
                 match_type=self.args.match_type,
@@ -1538,15 +1381,14 @@ class Controller(object): # {{{2
                 status_bar_extra_info=self.get_status_bar_extra_info(),
                 )
         try:
-            with SandboxedStdOut() as ssout:
-                found = s.run(
-                        items,
-                        page_backward_event_handler=self.page_backward_event_handler,
-                        page_forward_event_handler=self.page_forward_event_handler,
-                        )
+            selected = selector.run(
+                    items,
+                    page_backward_event_handler=self.page_backward_event_handler,
+                    page_forward_event_handler=self.page_forward_event_handler,
+                    )
         except KeyboardInterrupt:
             sys.exit(1) # error so no process will execute anything on blank output
-        return found
+        return selected
 
 # }}}2
 
@@ -2266,4 +2108,150 @@ if __name__ == '__main__': # {{{1
 #     Display.stop()
 #     raise
 # sys.exit(0)
+
+class CursesPrinter(object):
+
+    class OutOfWindowBoundsException(Exception):
+        pass
+
+    def __init__(self):
+        self.querylen = 0
+
+    def init(self):
+
+        # setup window
+        self.window = curses.initscr()
+        curses.start_color()
+        curses.use_default_colors()
+        curses.noecho()
+
+        # color for default text
+        curses.init_pair(1, -1, -1)
+        self.default_color = curses.color_pair(1)
+
+        ## TODO: allow configuration from environmental variable or rc file!
+
+        curses.init_pair(2, curses.COLOR_GREEN, -1)
+        self.match_color = curses.color_pair(2) | curses.A_UNDERLINE
+
+        curses.init_pair(3, curses.COLOR_MAGENTA, -1)
+        self.is_selected_color = curses.color_pair(3) | curses.A_BOLD
+
+        curses.init_pair(4, -1, -1)
+        self.current_row_color = curses.color_pair(4) # note: will be reversed below
+
+        curses.init_pair(5, curses.COLOR_MAGENTA, -1)
+        self.prompt_color = curses.color_pair(5) | curses.A_BOLD
+
+        # curses.init_pair(6, curses.COLOR_GREEN, -1)
+        # self.status_bar_color = curses.color_pair(6) | curses.A_BOLD | curses.A_REVERSE
+
+        curses.init_pair(6, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        self.status_bar_color = curses.color_pair(6) | curses.A_BOLD | curses.A_REVERSE
+
+        # curses.init_pair(6, -1, -1)
+        # self.status_bar_color = curses.color_pair(6) | curses.A_REVERSE
+
+    def cleanup(self):
+        curses_end()
+
+    def print_query(self,
+            query,
+            match_type,
+            whole_path_matching,
+            status_bar_extra_info=None):
+        height, width = self.window_size()
+
+        status_bar_components = []
+        if match_type == "fuzzy":
+            prompt = "? "
+            status_bar_components.append("[^R] expression: fuzzy  ")
+        elif match_type == "literal":
+            prompt = "= "
+            status_bar_components.append("[^R] expression: literal")
+        elif match_type == "regexp":
+            prompt = "% "
+            status_bar_components.append("[^R] expression: regular")
+        if whole_path_matching:
+            status_bar_components.append("[^D] directory match: yes")
+        else:
+            status_bar_components.append("[^D] directory match: no ")
+
+        status_bar = " ".join(status_bar_components)
+        if status_bar_extra_info:
+            remaining = width - len(status_bar) - 1
+            if remaining > 0:
+                status_bar += ("(" + truncate_front(status_bar_extra_info, remaining) + ")").rjust(remaining)
+        status_bar = status_bar.ljust(width-1)[:width-1]
+        self.window.move(height - STATUS_BAR_OFFSET, 0)
+        self.window.addstr(status_bar, self.status_bar_color)
+
+        q = prompt + query
+        self.querylen = len(q)
+        self.window.move(height - QUERY_ROW_OFFSET, 0)
+        self.window.addstr(q, self.prompt_color)
+
+    def print_item(self,
+            idx,
+            item,
+            is_current_row,
+            query):
+        height, width = self.window_size()
+        row = height - idx  - FIRST_ITEM_ROW_OFFSET
+        if row < 0:
+            raise CursesPrinter.OutOfWindowBoundsException
+        self.window.move(row, 0)
+        display_name = truncate_middle(item.display_name, width-3) # account for leader
+        weight = curses.A_NORMAL
+        color = self.default_color
+        if item.is_selected:
+            self.window.addstr("#", self.is_selected_color | curses.A_BOLD)
+            color = self.is_selected_color
+        else:
+            self.window.addstr(" ", self.default_color)
+        if is_current_row:
+            self.window.addstr("> ", self.default_color)
+            color = self.current_row_color
+            # to reverse all parts of the line (included matched)
+            weight = curses.A_REVERSE
+        else:
+            self.window.addstr("  ", self.default_color)
+        if item.score > 0:
+            left = display_name[:item.match_start]
+            main = display_name[item.match_start:item.match_end]
+            right = display_name[item.match_end:]
+            self.window.addstr(left, color | weight)
+            self.window.addstr(main, self.match_color | weight)
+            self.window.addstr(right, color | weight)
+        else:
+            self.window.addstr(display_name, color | weight)
+
+    def clear_query(self):
+        height, width = self.window_size()
+        q = " " * (width - 1)
+        self.window.move(height - QUERY_ROW_OFFSET, 0)
+        self.window.addstr(q, self.prompt_color)
+
+    def clear(self):
+        self.window.clear()
+
+    def flush(self):
+        height, width = self.window_size()
+        self.window.move(height - QUERY_ROW_OFFSET, self.querylen)
+        self.window.refresh()
+
+    def move(self, y, x):
+        self.window.move(y, x)
+        self.window.refresh()
+
+    def window_size(self):
+        # return self.window.getmaxyx() # not as responsive to resizing
+        # return curses.LINES, curses.COLS # not as responsive to resizing
+        return get_screen_dimensions()
+
+    def max_rows(self):
+        return get_screen_dimensions()[0]-3
+
+
+
 # }}}1
