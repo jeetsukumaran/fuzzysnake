@@ -187,10 +187,10 @@ class Viewer(object): # {{{2
 
     def __init__(self, stdscr, nrows=None):
         self.stdscr = stdscr
-        self.nodelay_stack = []
-        self.current_nodelay_state = None
+        self.is_input_blocking = None
         self.content_pad = None
         self.content_vscroll_offset = 0
+        self._is_input_blocking = None
         self.start(nrows=nrows)
 
     def start(self, nrows=None):
@@ -225,6 +225,8 @@ class Viewer(object): # {{{2
         curses.init_pair(8, curses.COLOR_YELLOW, curses.COLOR_RED)
         self.error_color = curses.color_pair(8) | curses.A_BOLD | curses.A_REVERSE
 
+        self.is_input_blocking = False
+
     def restart(self):
         self.stdscr.refresh()
 
@@ -240,10 +242,18 @@ class Viewer(object): # {{{2
         screen_height, screen_width = self.screen_dimensions()
         return screen_height - 3
 
-    def set_nodelay(self, value):
-        if self.current_nodelay_state is None:
-            self.current_nodelay_state = value
-        self.nodelay_stack.push(self.current_nodelay_state)
+    def resize_content_pad(self, nrows):
+        self.content_pad.resize(nrows, self.screen_dimensions()[1])
+
+    def _get_input_blocking(self):
+        return self._is_input_blocking
+    def _set_input_blocking(self, is_blocking):
+        self._is_input_blocking = is_blocking
+        if self._is_input_blocking:
+            self.stdscr.nodelay(0)
+        else:
+            self.stdscr.nodelay(1)
+    is_input_blocking = property(_get_input_blocking, _set_input_blocking)
 
     ### Rendering (Framework)
 
@@ -326,7 +336,7 @@ class Viewer(object): # {{{2
             elif current_item_row < half_height:
                 content_top = 0
             else:
-                content_top = current_item_row - half_height
+                content_top = current_item_row - half_height - 1
 
         self.stdscr.noutrefresh()
         self.content_pad.noutrefresh(
@@ -339,13 +349,54 @@ class Viewer(object): # {{{2
                 )
         curses.doupdate()
 
-    ### Actions
+    ### Input
+
+    def getch(self, blocking=None, silent=None):
+
+        # set state
+        self.is_input_blocking = blocking
+        if silent is True:
+            curses.noecho()
+        elif silent is False:
+            curses.echo()
+
+        ch = self.stdscr.getch()
+        ### FOLLOWING HACK NOT NEEDED ANY MORE, DUE TO FOLLOWING APPROACH::
+        ###
+        ###    with os.fdopen(0, 'r') as src:
+        ###       for item in src.read().split("\n"):
+        ###            # do stuff!
+        ###    sys.stdin = open("/dev/tty", "r")
+        ###
+        # if blocking and ch == -1:
+        #     # We are here because files were read from standard input
+        #     # and now input is unavailable. This hack works on POSIX
+        #     # systems ... but ARROW keys lead to exit in the loop
+        #     # because we checking for escape (by itself) in a non-blocking
+        #     # way.
+        #     import tty
+        #     fd = sys.stdin.fileno()
+        #     tty_mode = tty.tcgetattr(fd)
+        #     tty.setcbreak(fd)
+        #     try:
+        #         ch = ord(os.read(fd, 1))
+        #     finally:
+        #         tty.tcsetattr(fd, tty.TCSAFLUSH, tty_mode)
+        #     assert isinstance(ch, int)
+
+        # restore state
+        if blocking:
+            self.is_input_blocking = False
+        if not silent:
+            curses.noecho()
+
+        return ch
 
     def pause_for_keypress(self):
-        self.stdscr.nodelay(0)
-        ch = self.stdscr.getch()
-        self.stdscr.nodelay(1)
+        ch = self.getch(blocking=True)
         return ch
+
+    ### Actions
 
     def get_progress_ticker(self):
         return ProgressTicker(screen=self, color=self.spinner_color)
