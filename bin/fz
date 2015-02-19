@@ -154,9 +154,26 @@ class Subscreen(object): # {{{2
 
 class Display(object): # {{{2
 
+    # class variables {{{3
     FIRST_ITEM_ROW_OFFSET = 3
     STATUS_BAR_OFFSET     = 2
     QUERY_ROW_OFFSET      = 1
+    # }}}3
+
+    # key codes {{{3
+    KEYCODES = collections.OrderedDict()
+    for idx, c in enumerate("ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
+        KEYCODES[idx] = "CTRL-{}".format(c)
+    KEYCODES[27] = "ESC"
+    KEYCODES[28] = "FS"
+    # for idx in range(32, 127):
+    #     KEYCODES[idx] = chr(idx)
+    KEYCODES[-65] = "UP"
+    KEYCODES[-66] = "DOWN"
+    KEYCODES[-67] = "RIGHT"
+    KEYCODES[-68] = "LEFT"
+
+    # }}}3
 
     class OutOfWindowBoundsException(Exception):
         pass
@@ -341,14 +358,12 @@ class Display(object): # {{{2
     ### Input
 
     def getch(self, blocking=None, silent=None):
-
         # set state
         self.is_input_blocking = blocking
         if silent is True:
             curses.noecho()
         elif silent is False:
             curses.echo()
-
         ch = self.stdscr.getch()
         ### FOLLOWING HACK NOT NEEDED ANY MORE, DUE TO FOLLOWING APPROACH::
         ###
@@ -378,23 +393,37 @@ class Display(object): # {{{2
             self.is_input_blocking = False
         if not silent:
             curses.noecho()
-
         return ch
+
+    def get_keycode(self, blocking=True, silent=True):
+        ch_value = self.getch(blocking=blocking, silent=silent)
+        if ch_value == -1:
+            return None
+        elif ch_value == 27:
+            # Escape: could be just Escape, could be Ansi escape for
+            # arrows
+            # just escape? try non-blocking read to see if
+            # any other characters
+            ch_value = self.getch(blocking=False, silent=silent)
+            if ch_value == -1:
+                # Nope: just escape
+                return self.KEYCODES[27]
+            # other characters available
+            # assuming arrow-key, we discard
+            # the current and read the next
+            ch_value = self.getch(blocking=True, silent=silent)
+            return self.KEYCODES.get(-ch_value, None) # None if not handled
+        else:
+            return self.KEYCODES.get(ch_value, chr(ch_value))
 
     def pause_for_keypress(self):
         ch = self.getch(blocking=True)
         return ch
 
-    def check_for_cancel(self):
-        ch = self.getch(blocking=False)
-        # self.window.nodelay(1)
-        # ch = self.window.getch()
-        if ch == 27:
-            next_char = self.stdscr.getch()
-            if next_char == -1:
-                raise KeyboardInterrupt()
-        # self.window.nodelay(0)
-    ### Actions
+    def is_cancel_keycode(self, keycode):
+        return keycode in ("ESC", "FS", "CTRL-C",)
+
+    ### Special
 
     def get_progress_ticker(self):
         return ProgressTicker(display=self, color=self.spinner_color)
@@ -410,7 +439,10 @@ class ProgressTicker(object): # {{{2
         self.spinner_cycle = itertools.cycle(["|", "/", "-", "\\", "-",])
 
     def check_for_cancel(self):
-        return self.display.check_for_cancel()
+        keych = self.display.get_keycode(blocking=False, silent=True)
+        if self.display.is_cancel_keycode(keych):
+            return True
+        return False
 
     def update(self, message):
         self.current_step += 1
@@ -1102,7 +1134,8 @@ class DirectorySource(object): # {{{2
         progress = display.get_progress_ticker()
         total_items_scanned = 0
         for search_idx, (dirname, dirs, filenames) in enumerate(walk(start_dir)):
-            progress.check_for_cancel()
+            if progress.check_for_cancel():
+                raise KeyboardInterrupt()
             # dirname = os.path.normpath(dirname)
             total_items_scanned += (1 + len(dirs) + len(filenames))
             if search_idx % 100 == 0:
