@@ -189,7 +189,7 @@ class Viewer(object): # {{{2
         self.stdscr = stdscr
         self.nodelay_stack = []
         self.current_nodelay_state = None
-        self.content_window = None
+        self.content_pad = None
         self.content_vscroll_offset = 0
         self.start(nrows=nrows)
 
@@ -197,7 +197,7 @@ class Viewer(object): # {{{2
         cheight, cwidth = self.get_console_dimensions()
         if nrows is None:
             nrows = cheight
-        self.content_window = curses.newpad(nrows, cwidth)
+        self.content_pad = curses.newpad(nrows, cwidth)
 
         curses.use_default_colors()
 
@@ -233,8 +233,12 @@ class Viewer(object): # {{{2
     def screen_dimensions(self):
         return self.stdscr.getmaxyx()
 
-    def content_window_dimensions(self):
-        return self.content_window.getmaxyx()
+    def content_pad_dimensions(self):
+        return self.content_pad.getmaxyx()
+
+    def content_pad_visible_dimensions(self):
+        screen_height, screen_width = self.screen_dimensions()
+        return screen_height - 3
 
     def set_nodelay(self, value):
         if self.current_nodelay_state is None:
@@ -245,7 +249,7 @@ class Viewer(object): # {{{2
 
     def error(self, message, erase=True):
         if erase:
-            self.content_window.erase()
+            self.content_pad.erase()
         self.write_status_bar(message, self.error_color, refresh_screen=True)
         self.stdscr.move(height - self.STATUS_BAR_OFFSET, min(len(message), self.screen_dimensions()[1]-1))
         self.pause_for_keypress()
@@ -263,53 +267,53 @@ class Viewer(object): # {{{2
     ### Rendering (Content)
 
     def clear_content(self):
-        self.content_window.erase()
+        self.content_pad.erase()
 
     def render_content_item(self,
             idx,
             item,
             is_current_item,
             query):
-        height, width = self.content_window_dimensions()
+        height, width = self.content_pad_dimensions()
         row = height - idx - 1
         if row < 0:
             raise Viewer.OutOfWindowBoundsException
-        self.content_window.move(row, 0)
+        self.content_pad.move(row, 0)
         display_name = truncate_middle(item.display_name, width-3) # account for leader
         weight = curses.A_NORMAL
         color = self.default_color
         if item.is_selected:
-            self.content_window.addstr("#", self.is_selected_color | curses.A_BOLD)
+            self.content_pad.addstr("#", self.is_selected_color | curses.A_BOLD)
             color = self.is_selected_color
         else:
-            self.content_window.addstr(" ", self.default_color)
+            self.content_pad.addstr(" ", self.default_color)
         if is_current_item:
-            self.content_window.addstr("> ", self.default_color)
+            self.content_pad.addstr("> ", self.default_color)
             color = self.current_row_color
             # to reverse all parts of the line (included matched)
             weight = curses.A_REVERSE
         else:
-            self.content_window.addstr("  ", self.default_color)
+            self.content_pad.addstr("  ", self.default_color)
         if item.score > 0:
             left = display_name[:item.match_start]
             main = display_name[item.match_start:item.match_end]
             right = display_name[item.match_end:]
-            self.content_window.addstr(left, color | weight)
-            self.content_window.addstr(main, self.match_color | weight)
-            self.content_window.addstr(right, color | weight)
+            self.content_pad.addstr(left, color | weight)
+            self.content_pad.addstr(main, self.match_color | weight)
+            self.content_pad.addstr(right, color | weight)
         else:
-            self.content_window.addstr(display_name, color | weight)
+            self.content_pad.addstr(display_name, color | weight)
 
     ### Display
 
     def update_display(self, current_item_index):
         # self.stdscr.refresh()
-        # self.content_window.refresh(0, 0, 0, 0, 20, 20)
+        # self.content_pad.refresh(0, 0, 0, 0, 20, 20)
 
         screen_height, screen_width = self.screen_dimensions()
-        content_height, content_width = self.content_window_dimensions()
+        content_height, content_width = self.content_pad_dimensions()
 
-        available_height = screen_height - 3
+        available_height = self.content_pad_visible_dimensions()
         if content_height < available_height:
             screen_top = screen_height - content_height - 2
             content_top = 0
@@ -325,7 +329,7 @@ class Viewer(object): # {{{2
                 content_top = current_item_row - half_height
 
         self.stdscr.noutrefresh()
-        self.content_window.noutrefresh(
+        self.content_pad.noutrefresh(
                 content_top,
                 0,
                 screen_top,
