@@ -145,7 +145,7 @@ class Screen(object):
         self.stdscr = curses.initscr()
         curses.noecho()
         curses.cbreak()
-        self.stdscr.keypad(1)
+        # self.stdscr.keypad(1)
         try:
             curses.start_color()
         except:
@@ -153,7 +153,7 @@ class Screen(object):
         return self.stdscr
 
     def __exit__(self, exc_type, exc_value, traceback):
-        self.stdscr.keypad(0)
+        # self.stdscr.keypad(0)
         curses.echo()
         curses.nocbreak()
         curses.endwin()
@@ -190,7 +190,7 @@ class Viewer(object): # {{{2
         self.nodelay_stack = []
         self.current_nodelay_state = None
         self.content_window = None
-        self.content_vscroll_offset = 2
+        self.content_vscroll_offset = 0
         self.start(nrows=nrows)
 
     def start(self, nrows=None):
@@ -241,7 +241,7 @@ class Viewer(object): # {{{2
             self.current_nodelay_state = value
         self.nodelay_stack.push(self.current_nodelay_state)
 
-    ### Rendering
+    ### Rendering (Framework)
 
     def error(self, message, erase=True):
         if erase:
@@ -259,6 +259,11 @@ class Viewer(object): # {{{2
         self.stdscr.addstr(height - self.STATUS_BAR_OFFSET, 0, padded_message, color)
         if refresh_screen:
             self.stdscr.refresh()
+
+    ### Rendering (Content)
+
+    def clear_content(self):
+        self.content_window.erase()
 
     def render_content_item(self,
             idx,
@@ -295,6 +300,8 @@ class Viewer(object): # {{{2
         else:
             self.content_window.addstr(display_name, color | weight)
 
+    ### Display
+
     def update_display(self, current_item_index):
         # self.stdscr.refresh()
         # self.content_window.refresh(0, 0, 0, 0, 20, 20)
@@ -305,14 +312,14 @@ class Viewer(object): # {{{2
         available_height = screen_height - 3
         num_entries = content_height # for now
         if num_entries < available_height:
-            screen_top = screen_height - num_entries
+            screen_top = screen_height - num_entries - 2
             content_top = 0
         else:
             screen_top = 0
-            content_top = num_entries - current_item_index - self.content_vscroll_offset
+            content_top = num_entries - current_item_index - self.content_vscroll_offset - 1
             displayed_height = num_entries - content_top
             if displayed_height < available_height:
-                content_top -= (available_height - displayed_height )
+                content_top -= (available_height - displayed_height + 1)
             # raise IndexError(content_top)
             # if content_height - content_top < available_height:
             #     content_top = content_height - available_height
@@ -334,6 +341,7 @@ class Viewer(object): # {{{2
         self.stdscr.nodelay(0)
         ch = self.stdscr.getch()
         self.stdscr.nodelay(1)
+        return ch
 
     def get_progress_ticker(self):
         return ProgressTicker(screen=self, color=self.spinner_color)
@@ -345,25 +353,38 @@ class X1(object):
 
 def t1():
     import random
-    nrows = 7
+    nrows = 80
     with Screen() as stdscr:
         viewer = Viewer(stdscr=stdscr, nrows=nrows)
         # viewer.start(nrows)
         viewer.write_status_bar("hello")
-        for idx in range(nrows):
-            s = "This is item {}".format(idx)
-            item = X1()
-            item.display_name = s
-            item.is_selected = False
-            item.score = 100
-            item.match_start = 0
-            item.match_end = 0
-            viewer.render_content_item(idx=idx,
-                    item=item,
-                    is_current_item= idx == 2,
-                    query="hello")
-        viewer.update_display(3)
-        viewer.pause_for_keypress()
+        current_item_index = 0
+        while True:
+            viewer.clear_content()
+            for idx in range(nrows):
+                s = "This is item {}".format(idx)
+                item = X1()
+                item.display_name = s
+                item.is_selected = False
+                item.score = 100
+                item.match_start = 0
+                item.match_end = 0
+                viewer.render_content_item(idx=idx,
+                        item=item,
+                        is_current_item= idx == current_item_index,
+                        query="hello")
+            viewer.update_display(current_item_index)
+            ch = viewer.pause_for_keypress()
+            if ch == ord("q"):
+                break
+            elif ch == ord("j"):
+                current_item_index -= 1
+            elif ch == ord("k"):
+                current_item_index += 1
+            if current_item_index < 0:
+                current_item_index = 0
+            elif current_item_index >= nrows:
+                current_item_index = nrows - 1
         # viewer.stop()
 
 
