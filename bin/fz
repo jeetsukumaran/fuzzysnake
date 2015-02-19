@@ -310,19 +310,19 @@ class Viewer(object): # {{{2
         content_height, content_width = self.content_window_dimensions()
 
         available_height = screen_height - 3
-        num_entries = content_height # for now
-        if num_entries < available_height:
-            screen_top = screen_height - num_entries - 2
+        if content_height < available_height:
+            screen_top = screen_height - content_height - 2
             content_top = 0
         else:
             screen_top = 0
-            content_top = num_entries - current_item_index - self.content_vscroll_offset - 1
-            displayed_height = num_entries - content_top
-            if displayed_height < available_height:
-                content_top -= (available_height - displayed_height + 1)
-            # raise IndexError(content_top)
-            # if content_height - content_top < available_height:
-            #     content_top = content_height - available_height
+            current_item_row = content_height - current_item_index
+            half_height = int(available_height / 2)
+            if current_item_row > (content_height - half_height):
+                content_top = content_height - available_height - 1
+            elif current_item_row < half_height:
+                content_top = 0
+            else:
+                content_top = current_item_row - half_height
 
         self.stdscr.noutrefresh()
         self.content_window.noutrefresh(
@@ -363,6 +363,10 @@ def t1():
             viewer.clear_content()
             for idx in range(nrows):
                 s = "This is item {}".format(idx)
+                if idx == nrows - 1:
+                    s = s + " (last)"
+                elif idx == 0:
+                    s = s + " (first)"
                 item = X1()
                 item.display_name = s
                 item.is_selected = False
