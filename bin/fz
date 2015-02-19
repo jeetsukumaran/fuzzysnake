@@ -70,13 +70,6 @@ __author__ = 'Jeet Sukumaran'
 __copyright__ = 'Copyright (C) 2015 Jeet Sukumaran.'
 # }}}1
 
-# Globals {{{1
-# ==============================================================================
-FIRST_ITEM_ROW_OFFSET = 3
-STATUS_BAR_OFFSET     = 2
-QUERY_ROW_OFFSET      = 1
-# }}}1
-
 # Text Utilities {{{1
 # ==============================================================================
 def levenshtein(s1, s2):
@@ -118,106 +111,10 @@ def truncate_middle(line, length=70, truncation_str="..."):
     return "{}{}{}".format(line[:start], truncation_str, line[end:])
 # }}}1
 
-# Debugging {{{1
-# ==============================================================================
-def dump_stack(out=None):
-    import inspect
-    if out is None:
-        out = sys.stderr
-    for frame, filename, line_num, func, source_code, source_index in inspect.stack()[2:]:
-        if source_code is None:
-            out.write("{}: {}\n".format(filename, line_num))
-        else:
-            out.write("{}: {}: {}\n".format(filename, line_num, source_code[source_index].strip()))
-# }}}1
-
-# External Command and Event Handling {{{1
+# CURSES {{{1
 # ==============================================================================
 
-def compose_command(cmd,
-        args=None,
-        substitute_token="{}"):
-    cmd = shlex.split(cmd)
-    if args is not None:
-        substitution_made = False
-        prev_idx = 0
-        expanded_cmd = []
-        for idx, token in enumerate(cmd):
-            if token == substitute_token:
-                expanded_cmd.extend(cmd[prev_idx:idx])
-                expanded_cmd.extend(args)
-                prev_idx = idx + 1
-                substitution_made = True
-        if not substitution_made:
-            cmd.extend(args)
-        else:
-            cmd = expanded_cmd + cmd[prev_idx:]
-    return cmd
-
-def execute_command(cmd,
-        args=None,
-        substitute_token="{}",
-        verbose=True,
-        as_subprocess=False):
-    cmd = compose_command(
-            cmd=cmd,
-            args=args,
-            substitute_token=substitute_token)
-    if verbose:
-        sys.stderr.write("{}\n".format(" ".join(cmd)))
-    try:
-        if not as_subprocess:
-            # Note: cannot use subprocess here due to parent process (this program)
-            # needing to exit before the subprocess is possibly done. `os.exec` and
-            # its kin work: independent processed is spawned and the current
-            # process is replaced by it.
-            os.execvp(cmd[0], cmd)
-        else:
-            curses_end()
-            p = subprocess.Popen(cmd)
-            p.communicate()
-    except OSError:
-        sys.stderr.write("Failed to execute command with tokens: {}\n".format(cmd))
-        sys.exit(1)
-
-# }}}1
-
-# CURSES Support {{{1
-# ==============================================================================
-
-def get_screen_dimensions():
-    env = os.environ
-    def ioctl_GWINSZ(fd):
-        try:
-            cr = struct.unpack('hh', fcntl.ioctl(fd, termios.TIOCGWINSZ, '1234'))
-        except:
-            return
-        return cr
-    return ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2) or (25, 80)
-
-def curses_error(message):
-    with SandboxedStdOut() as ssout:
-        window = curses.initscr()
-        curses.start_color()
-        curses.use_default_colors()
-        curses.noecho()
-        curses.init_pair(9, curses.COLOR_YELLOW, curses.COLOR_RED)
-        message_color = curses.color_pair(9) | curses.A_BOLD | curses.A_REVERSE
-        height, width = get_screen_dimensions()
-        padded_message = message.ljust(width-1)[:width-1]
-        window.move(height - STATUS_BAR_OFFSET, 0)
-        window.addstr(padded_message, message_color)
-        window.refresh()
-        window.nodelay(0)
-        window.move(height - STATUS_BAR_OFFSET, min(len(message), width-1))
-        ch = window.getch()
-        curses_end()
-
-def curses_end():
-    curses.echo()
-    curses.endwin()
-
-class SandboxedStdOut(object):
+class SandboxedStdOut(object): # {{{2
 
     def __init__(self, suppress_window=False):
         self.suppress_window = suppress_window
@@ -240,46 +137,240 @@ class SandboxedStdOut(object):
         os.dup2(self.prev_stdout_fd, self.prev_stdout.fileno())
         self.stdout = self.prev_stdout
         # os.dup2(self.old_stdout, 1)
+# }}}2
 
-class CursesProgressTicker(object):
+class Screen(object):
 
-    def __init__(self, suppress_window=False):
-        self.suppress_window = suppress_window
-        self.window = None
+    def __enter__(self):
+        self.stdscr = curses.initscr()
+        curses.noecho()
+        curses.cbreak()
+        self.stdscr.keypad(1)
+        try:
+            curses.start_color()
+        except:
+            pass
+        return self.stdscr
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.stdscr.keypad(0)
+        curses.echo()
+        curses.nocbreak()
+        curses.endwin()
+
+class Viewer(object): # {{{2
+
+    FIRST_ITEM_ROW_OFFSET = 3
+    STATUS_BAR_OFFSET     = 2
+    QUERY_ROW_OFFSET      = 1
+
+    @staticmethod
+    def get_console_dimensions():
+        env = os.environ
+        def ioctl_GWINSZ(fd):
+            try:
+                cr = struct.unpack('hh', fcntl.ioctl(fd, termios.TIOCGWINSZ, '1234'))
+            except:
+                return
+            return cr
+        return ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2) or (25, 80)
+
+    @staticmethod
+    def stop():
+        curses.echo()
+        curses.endwin()
+
+    ### Life-cycle
+
+    def __init__(self, stdscr, nrows=None):
+        self.stdscr = stdscr
+        self.nodelay_stack = []
+        self.current_nodelay_state = None
+        self.content_window = None
+        self.content_vscroll_offset = 2
+        self.start(nrows=nrows)
+
+    def start(self, nrows=None):
+        cheight, cwidth = self.get_console_dimensions()
+        if nrows is None:
+            nrows = cheight
+        self.content_window = curses.newpad(nrows + 3, cwidth)
+
+        curses.use_default_colors()
+
+        curses.init_pair(1, -1, -1)
+        self.default_color = curses.color_pair(1)
+
+        curses.init_pair(2, curses.COLOR_GREEN, -1)
+        self.match_color = curses.color_pair(2) | curses.A_UNDERLINE
+
+        curses.init_pair(3, curses.COLOR_MAGENTA, -1)
+        self.is_selected_color = curses.color_pair(3) | curses.A_BOLD
+
+        curses.init_pair(4, -1, -1)
+        self.current_row_color = curses.color_pair(4) # note: will be reversed below
+
+        curses.init_pair(5, curses.COLOR_MAGENTA, -1)
+        self.prompt_color = curses.color_pair(5) | curses.A_BOLD
+
+        curses.init_pair(6, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        self.status_bar_color = curses.color_pair(6) | curses.A_BOLD | curses.A_REVERSE
+
+        curses.init_pair(7, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        self.spinner_color = curses.color_pair(7) | curses.A_BOLD | curses.A_REVERSE
+
+        curses.init_pair(8, curses.COLOR_YELLOW, curses.COLOR_RED)
+        self.error_color = curses.color_pair(8) | curses.A_BOLD | curses.A_REVERSE
+
+    def restart(self):
+        self.stdscr.refresh()
+
+    ### Book-keeping
+
+    def screen_dimensions(self):
+        return self.stdscr.getmaxyx()
+
+    def content_window_dimensions(self):
+        return self.content_window.getmaxyx()
+
+    def set_nodelay(self, value):
+        if self.current_nodelay_state is None:
+            self.current_nodelay_state = value
+        self.nodelay_stack.push(self.current_nodelay_state)
+
+    ### Rendering
+
+    def error(self, message, erase=True):
+        if erase:
+            self.content_window.erase()
+        self.write_status_bar(message, self.error_color, refresh_screen=True)
+        self.stdscr.move(height - self.STATUS_BAR_OFFSET, min(len(message), self.screen_dimensions()[1]-1))
+        self.pause_for_keypress()
+
+    def write_status_bar(self, s, color=None, refresh_screen=True):
+        if color is None:
+            color = self.status_bar_color
+        height, width = self.screen_dimensions()
+        # self.stdscr.clrtoeol()
+        padded_message = s.ljust(width-1)[:width-1]
+        self.stdscr.addstr(height - self.STATUS_BAR_OFFSET, 0, padded_message, color)
+        if refresh_screen:
+            self.stdscr.refresh()
+
+    def render_content_item(self,
+            idx,
+            item,
+            is_current_item,
+            query):
+        height, width = self.content_window_dimensions()
+        row = height - idx - self.FIRST_ITEM_ROW_OFFSET
+        if row < 0:
+            raise CursesPrinter.OutOfWindowBoundsException
+        self.content_window.move(row, 0)
+        display_name = truncate_middle(item.display_name, width-3) # account for leader
+        weight = curses.A_NORMAL
+        color = self.default_color
+        if item.is_selected:
+            self.content_window.addstr("#", self.is_selected_color | curses.A_BOLD)
+            color = self.is_selected_color
+        else:
+            self.content_window.addstr(" ", self.default_color)
+        if is_current_item:
+            self.content_window.addstr("> ", self.default_color)
+            color = self.current_row_color
+            # to reverse all parts of the line (included matched)
+            weight = curses.A_REVERSE
+        else:
+            self.content_window.addstr("  ", self.default_color)
+        if item.score > 0:
+            left = display_name[:item.match_start]
+            main = display_name[item.match_start:item.match_end]
+            right = display_name[item.match_end:]
+            self.content_window.addstr(left, color | weight)
+            self.content_window.addstr(main, self.match_color | weight)
+            self.content_window.addstr(right, color | weight)
+        else:
+            self.content_window.addstr(display_name, color | weight)
+
+    def update_display(self, current_item_index, max_items):
+        # self.stdscr.refresh()
+        # self.content_window.refresh(0, 0, 0, 0, 20, 20)
+
+        sheight, swidth = self.screen_dimensions()
+        cheight, cwidth = self.content_window_dimensions()
+        cwindow_top = cheight - current_item_index - self.content_vscroll_offset
+        # raise IndexError(cwindow_top)
+        visible_cwindow_height = cheight - cwindow_top
+        empty_space = sheight - visible_cwindow_height
+        if empty_space > 0:
+            cwindow_top -= empty_space
+
+        self.stdscr.noutrefresh()
+        self.content_window.noutrefresh(
+                cwindow_top,
+                0,
+                0,
+                0,
+                sheight-3,
+                swidth,
+                )
+        curses.doupdate()
+
+    ### Actions
+
+    def pause_for_keypress(self):
+        self.stdscr.nodelay(0)
+        ch = self.stdscr.getch()
+        self.stdscr.nodelay(1)
+
+    def get_progress_ticker(self):
+        return ProgressTicker(screen=self, color=self.spinner_color)
+
+# }}}2
+
+class X1(object):
+    pass
+
+def t1():
+    import random
+    nrows = 3000
+    with Screen() as stdscr:
+        viewer = Viewer(stdscr=stdscr, nrows=nrows)
+        # viewer.start(nrows)
+        viewer.write_status_bar("hello")
+        for idx in range(nrows):
+            s = "This is item {}".format(idx)
+            item = X1()
+            item.display_name = s
+            item.is_selected = False
+            item.score = 100
+            item.match_start = 0
+            item.match_end = 0
+            viewer.render_content_item(idx=idx,
+                    item=item,
+                    is_current_item= idx == 4,
+                    query="hello")
+        viewer.update_display(5, nrows)
+        viewer.pause_for_keypress()
+        # viewer.stop()
+
+
+try:
+    t1()
+except:
+    Viewer.stop()
+    raise
+sys.exit(0)
+
+class ProgressTicker(object): # {{{2
+
+    def __init__(self, screen, color):
+        self.screen = screen
+        self.color = color
         self.current_step = 0
         self.spinner_cycle = itertools.cycle(["|", "/", "-", "\\", "-",])
 
-    def __enter__(self):
-        if self.suppress_window:
-            return self
-        self.window = curses.initscr()
-        curses.start_color()
-        curses.use_default_colors()
-        curses.noecho()
-        self.window.nodelay(1)
-        curses.init_pair(8, curses.COLOR_YELLOW, curses.COLOR_BLACK)
-        self.spinner_color = curses.color_pair(8) | curses.A_BOLD | curses.A_REVERSE
-        # try:
-        #     curses.curs_set(0)
-        # except curses.error:
-        #     pass
-        self.window.erase()
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        if self.suppress_window:
-            return
-        self.cleanup()
-
-    def cleanup(self):
-        if self.suppress_window:
-            return
-        self.window.nodelay(0)
-        curses_end()
-
     def check_for_cancel(self):
-        if self.suppress_window:
-            return
         self.window.nodelay(1)
         ch = self.window.getch()
         if ch == 27:
@@ -300,6 +391,9 @@ class CursesProgressTicker(object):
         self.window.addstr(s1, self.spinner_color)
         self.window.move(height - STATUS_BAR_OFFSET, min(len(s0), width-1))
         self.window.refresh()
+
+# }}}2
+
 
 class CursesPrinter(object):
 
@@ -443,6 +537,70 @@ class CursesPrinter(object):
 
     def max_rows(self):
         return get_screen_dimensions()[0]-3
+
+# }}}1
+
+# Debugging {{{1
+# ==============================================================================
+def dump_stack(out=None):
+    import inspect
+    if out is None:
+        out = sys.stderr
+    for frame, filename, line_num, func, source_code, source_index in inspect.stack()[2:]:
+        if source_code is None:
+            out.write("{}: {}\n".format(filename, line_num))
+        else:
+            out.write("{}: {}: {}\n".format(filename, line_num, source_code[source_index].strip()))
+# }}}1
+
+# External Command and Event Handling {{{1
+# ==============================================================================
+
+def compose_command(cmd,
+        args=None,
+        substitute_token="{}"):
+    cmd = shlex.split(cmd)
+    if args is not None:
+        substitution_made = False
+        prev_idx = 0
+        expanded_cmd = []
+        for idx, token in enumerate(cmd):
+            if token == substitute_token:
+                expanded_cmd.extend(cmd[prev_idx:idx])
+                expanded_cmd.extend(args)
+                prev_idx = idx + 1
+                substitution_made = True
+        if not substitution_made:
+            cmd.extend(args)
+        else:
+            cmd = expanded_cmd + cmd[prev_idx:]
+    return cmd
+
+def execute_command(cmd,
+        args=None,
+        substitute_token="{}",
+        verbose=True,
+        as_subprocess=False):
+    cmd = compose_command(
+            cmd=cmd,
+            args=args,
+            substitute_token=substitute_token)
+    if verbose:
+        sys.stderr.write("{}\n".format(" ".join(cmd)))
+    try:
+        if not as_subprocess:
+            # Note: cannot use subprocess here due to parent process (this program)
+            # needing to exit before the subprocess is possibly done. `os.exec` and
+            # its kin work: independent processed is spawned and the current
+            # process is replaced by it.
+            os.execvp(cmd[0], cmd)
+        else:
+            curses_end()
+            p = subprocess.Popen(cmd)
+            p.communicate()
+    except OSError:
+        sys.stderr.write("Failed to execute command with tokens: {}\n".format(cmd))
+        sys.exit(1)
 
 # }}}1
 
