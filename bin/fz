@@ -1386,8 +1386,7 @@ class Controller(object): # {{{2
         return status_bar_extra_info
 
     def apply_action(self, filepaths, as_subprocess=False):
-        if as_subprocess:
-            self.display.stop()
+        self.display.stop()
         if args.action_type == "edit":
             execute_command(self.editor_path, filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
         elif args.action_type == "open":
