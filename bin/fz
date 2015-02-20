@@ -136,12 +136,22 @@ class Subscreen(object): # {{{2
             curses.start_color()
         except:
             pass
+        self.cursor_setting = None
+        try:
+            self.cursor_setting = curses.curs_set(0)
+        except:
+            pass
         return self.stdscr
 
     def __exit__(self, exc_type, exc_value, traceback):
 
         # restore terminal
         # self.stdscr.keypad(0)
+        if self.cursor_setting is not None:
+            try:
+                curses.curs_set(self.cursor_setting)
+            except:
+                pass
         curses.echo()
         curses.nocbreak()
         curses.endwin()
@@ -270,6 +280,14 @@ class Display(object): # {{{2
         else:
             self.stdscr.nodelay(1)
     is_input_blocking = property(_get_input_blocking, _set_input_blocking)
+
+    def set_cursor(self, value):
+        if value is None:
+            return
+        try:
+            return curses.curs_set(value)
+        except:
+            pass
 
     ### Rendering (Framework)
 
@@ -531,10 +549,15 @@ class Display(object): # {{{2
     def get_query_keycode(self, echo=False):
         height, width = self.screen_dimensions()
         self.stdscr.move(height - self.QUERY_ROW_OFFSET, self.query_length)
-        return self.get_keycode(blocking=True, echo=False)
+        cursor = self.set_cursor(2)
+        keycode = self.get_keycode(blocking=True, echo=echo)
+        cursor = self.set_cursor(cursor)
+        return keycode
 
     def pause_for_keypress(self):
+        cursor = self.set_cursor(2)
         ch = self.getch(blocking=True)
+        self.set_cursor(cursor)
         return ch
 
     def is_cancel_keycode(self, keycode):
