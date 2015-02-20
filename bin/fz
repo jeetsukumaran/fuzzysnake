@@ -927,6 +927,12 @@ class Selector(object): # {{{2
                         # for w, item in current_heaps[-1]:
                         for item in display_items:
                             item.is_selected = True
+                elif keycode == "CTRL-G":
+                    # <CTRL-G>: Invert selection
+                    if self.multiselection_mode:
+                        # for w, item in current_heaps[-1]:
+                        for item in display_items:
+                            item.is_selected = not item.is_selected
                 elif keycode == "CTRL-J" or keycode == "CTRL-M":
                     return self._extract_selected_from_heap(
                             heap=current_heaps[-1],
