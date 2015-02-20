@@ -216,7 +216,7 @@ class Display(object): # {{{2
         self.start(nrows=nrows)
         self.query_length = 0
         self.content_limit = 1000
-        self.content_heap = None
+        self.content_items = None
 
     def start(self, nrows=None):
         cv_height, cv_width = self.content_pad_available_display_dimensions()
@@ -320,7 +320,7 @@ class Display(object): # {{{2
             status_bar_extra_info=None,
             ):
         self.stdscr.erase()
-        self.render_content_heap(heap, focal_item_index)
+        self.render_content_items(heap, focal_item_index)
         self.render_query(
                 query=query,
                 match_type=match_type,
@@ -328,24 +328,25 @@ class Display(object): # {{{2
                 focal_item_index=focal_item_index,
                 status_bar_extra_info=status_bar_extra_info)
         self.refresh(focal_item_index=focal_item_index)
+        return self.content_items
 
-    def render_content_heap(self, heap, focal_item_index):
+    def render_content_items(self, heap, focal_item_index):
         self.content_pad.erase()
-        self.content_heap = []
-        if not heap:
-            return
-        if len(heap) > self.content_pad_dimensions()[0]:
-            self.resize_content_pad(len(heap))
-        hc = list(heap)
-        current_index = 0
-        while hc:
-            score, item = heapq.heappop(hc)
-            self.content_heap.append(item)
-            try:
-                self.render_content_item(current_index, item, current_index==focal_item_index)
-            except Display.OutOfWindowBoundsException:
-                break
-            current_index += 1
+        self.content_items = []
+        if heap:
+            if len(heap) > self.content_pad_dimensions()[0]:
+                self.resize_content_pad(len(heap))
+            hc = list(heap)
+            current_index = 0
+            while hc:
+                score, item = heapq.heappop(hc)
+                self.content_items.append(item)
+                try:
+                    self.render_content_item(current_index, item, current_index==focal_item_index)
+                except Display.OutOfWindowBoundsException:
+                    break
+                current_index += 1
+        return self.content_items
 
     def render_content_item(self,
             item_index,
@@ -412,7 +413,7 @@ class Display(object): # {{{2
             remaining = width - len(status_bar) - 1
             if remaining > 0:
                 status_bar += (("({})".format(truncate_front(status_bar_extra_info, remaining))).rjust(remaining))
-                # num_entries = len(self.content_heap)
+                # num_entries = len(self.content_items)
                 # if num_entries:
                 #     focal_item_index += 1
                 # status_bar += ("{} of {} entries (".format(focal_item_index, num_entries, truncate_front(status_bar_extra_info, remaining).rjust(remaining)
@@ -440,7 +441,7 @@ class Display(object): # {{{2
             content_height, content_width = self.content_pad_dimensions()
             screen_height, screen_width = self.screen_dimensions()
             self.stdscr.noutrefresh()
-            num_content_items = len(self.content_heap)
+            num_content_items = len(self.content_items)
             if not num_content_items:
                 self.content_pad.noutrefresh(
                         0,
@@ -569,15 +570,15 @@ class Display(object): # {{{2
     def update_focal_item(self, current_focal_item_index, new_focal_item_index):
         if new_focal_item_index != current_focal_item_index:
             # try:
-            #     self.render_content_item(current_focal_item_index, self.content_heap[current_focal_item_index][1], False)
+            #     self.render_content_item(current_focal_item_index, self.content_items[current_focal_item_index][1], False)
             # except Display.OutOfWindowBoundsException:
             #     pass
             # try:
-            #     self.render_content_item(new_focal_item_index, self.content_heap[new_focal_item_index][1], True)
+            #     self.render_content_item(new_focal_item_index, self.content_items[new_focal_item_index][1], True)
             # except Display.OutOfWindowBoundsException:
             #     pass
-            self.render_content_item(current_focal_item_index, self.content_heap[current_focal_item_index], False)
-            self.render_content_item(new_focal_item_index, self.content_heap[new_focal_item_index], True)
+            self.render_content_item(current_focal_item_index, self.content_items[current_focal_item_index], False)
+            self.render_content_item(new_focal_item_index, self.content_items[new_focal_item_index], True)
             self.refresh(new_focal_item_index)
 
     def move_focus_to_next(self, focal_item_index):
@@ -592,7 +593,7 @@ class Display(object): # {{{2
         # Since we display from the bottom up, moving 'up' or 'previous' means
         # moving to a *lower*-ring result, which requires *incrementing* the
         # index to move *down* the list, which is sorted incrementally by score.
-        new_item_index = min(len(self.content_heap)-1, focal_item_index + 1)
+        new_item_index = min(len(self.content_items)-1, focal_item_index + 1)
         # new_item_index = focal_item_index + 1
         if new_item_index < 0:
             new_item_index = 0
@@ -843,7 +844,7 @@ class Selector(object): # {{{2
             current_heaps.append(self._new_heap(current_query, current_heaps[-1]))
         return current_heaps
 
-    def _loop(self, current_heaps):
+    def _loop(self, current_heaps, display_items):
         heapq.heapify(current_heaps[0])
         current_query = ""
         focal_item_index = 0
@@ -856,14 +857,14 @@ class Selector(object): # {{{2
                 raise KeyboardInterrupt
             elif keycode == "UP" or keycode == "CTRL-P":
                 focal_item_index = self.display.move_focus_to_previous(focal_item_index)
-                # self.render(
+                # display_items = self.render(
                 #         heap=current_heaps[-1],
                 #         focal_item_index=focal_item_index,
                 #         query=current_query,
                 #         )
             elif keycode == "DOWN" or keycode == "CTRL-N":
                 focal_item_index = self.display.move_focus_to_next(focal_item_index)
-                # self.render(
+                # display_items = self.render(
                 #         heap=current_heaps[-1],
                 #         focal_item_index=focal_item_index,
                 #         query=current_query,
@@ -913,16 +914,18 @@ class Selector(object): # {{{2
                 elif keycode == "CTRL-I":
                     # <TAB>: toggle in multiselection mode; simply consume character otherwise
                     if self.multiselection_mode:
-                        current_heaps[-1][focal_item_index][1].is_selected = not current_heaps[-1][focal_item_index][1].is_selected
+                        display_items[focal_item_index].is_selected = not display_items[focal_item_index].is_selected
                 elif keycode == "CTRL-X":
                     # <CTRL-X>: Cancel all in multiselection mode; simply consume character otherwise
                     if self.multiselection_mode:
-                        for w, item in current_heaps[-1]:
+                        # for w, item in current_heaps[-1]:
+                        for item in display_items:
                             item.is_selected = False
                 elif keycode == "CTRL-A":
                     # <CTRL-A>: Mark all in multiselection mode; simply consume character otherwise
                     if self.multiselection_mode:
-                        for w, item in current_heaps[-1]:
+                        # for w, item in current_heaps[-1]:
+                        for item in display_items:
                             item.is_selected = True
                 elif keycode == "CTRL-J" or keycode == "CTRL-M":
                     return self._extract_selected_from_heap(
@@ -942,7 +945,7 @@ class Selector(object): # {{{2
                         focal_item_index = 0
                     except ValueError:
                         pass
-                self.render(
+                display_items = self.render(
                         heap=current_heaps[-1],
                         focal_item_index=focal_item_index,
                         query=current_query,
@@ -978,7 +981,7 @@ class Selector(object): # {{{2
         return [heap[0][1]] if heap else []
 
     def render(self, heap, focal_item_index, query):
-        self.display.render_main(
+        return self.display.render_main(
                 heap=heap,
                 focal_item_index=focal_item_index,
                 query=query,
@@ -1014,12 +1017,12 @@ class Selector(object): # {{{2
             try:
                 heap = [(i.score, i) for i in items]
                 heap.sort()
-                self.render(
+                display_items = self.render(
                         heap=heap,
                         focal_item_index=0,
                         query="",
                         )
-                return self._loop([heap])
+                return self._loop([heap], display_items)
             except Selector.PageBackwardEventException as e:
                 if page_backward_event_handler:
                     items, self.status_bar_extra_info = page_backward_event_handler(e)
