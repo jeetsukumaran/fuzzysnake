@@ -29,6 +29,11 @@ A utility to find, list, filter, and act on files or directories from your
 shell, using dynamic fuzzy-matching of patterns as you type them in.
 """
 
+_debugf = open("fuzzysnake-debug.txt", "w")
+def _debugprint(s):
+    _debugf.write(s)
+    _debugf.flush()
+
 # Imports {{{1
 # ==============================================================================
 import os
@@ -241,7 +246,8 @@ class Display(object): # {{{2
         self.is_input_blocking = False
 
     def restart(self):
-        self.stdscr.refresh()
+        # self.stdscr.refresh()
+        self.refresh()
 
     ### Book-keeping
 
@@ -325,6 +331,7 @@ class Display(object): # {{{2
             is_focal_item):
         height, width = self.content_pad_dimensions()
         row = height - item_index - 1
+        _debugprint("{}: {}: {}\n".format(item_index, row, item.filepath))
         if row < 0:
             raise Display.OutOfWindowBoundsException
         self.content_pad.move(row, 0)
@@ -399,10 +406,11 @@ class Display(object): # {{{2
     #     self.window.refresh()
 
     def refresh(self, focal_item_index):
-        # content_height, content_width = self.content_pad_dimensions()
+        content_height, content_width = self.content_pad_dimensions()
         screen_height, screen_width = self.screen_dimensions()
         self.stdscr.noutrefresh()
         if not self.num_content_items:
+            # _debugprint("no items")
             self.content_pad.noutrefresh(
                     0,
                     0,
@@ -415,10 +423,11 @@ class Display(object): # {{{2
             available_height = self.content_pad_available_display_dimensions()[0]
             if self.num_content_items < available_height:
                 screen_top = screen_height - self.num_content_items - 2
-                content_top = 0
+                content_top = content_height - self.num_content_items
             else:
                 screen_top = 0
-                current_item_row = self.num_content_items - focal_item_index
+                # current_item_row = self.num_content_items - focal_item_index
+                current_item_row = content_height - focal_item_index
                 half_height = int(available_height / 2)
                 if current_item_row > (self.num_content_items - half_height):
                     content_top = self.num_content_items - available_height - 1
@@ -426,6 +435,7 @@ class Display(object): # {{{2
                     content_top = 0
                 else:
                     content_top = current_item_row - half_height - 1
+            _debugprint("{}: {}, {}, {}\n".format(self.num_content_items, content_top, screen_top, screen_height-3))
             self.content_pad.noutrefresh(
                     content_top,
                     0,
@@ -897,7 +907,7 @@ class Selector(object): # {{{2
         self.display.render_main(
                 heap=heap,
                 focal_item_index=focal_item_index,
-                query="",
+                query=query,
                 match_type=self.match_type,
                 whole_path_matching=self.whole_path_matching,
                 status_bar_extra_info=self.status_bar_extra_info,
