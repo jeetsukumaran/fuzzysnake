@@ -162,7 +162,7 @@ class Display(object): # {{{2
     # key codes {{{3
     KEYCODES = collections.OrderedDict()
     for idx, c in enumerate("ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
-        KEYCODES[idx] = "CTRL-{}".format(c)
+        KEYCODES[idx+1] = "CTRL-{}".format(c)
     KEYCODES[27] = "ESC"
     KEYCODES[28] = "FS"
     # for idx in range(32, 127):
@@ -204,6 +204,7 @@ class Display(object): # {{{2
         self.start(nrows=nrows)
         self.query_length = 0
         self.limit_content = None
+        self.num_content_items = 0
 
     def start(self, nrows=None):
         cv_height, cv_width = self.content_pad_available_display_dimensions()
@@ -302,12 +303,14 @@ class Display(object): # {{{2
                 match_type=match_type,
                 whole_path_matching=whole_path_matching,
                 status_bar_extra_info=status_bar_extra_info)
+        self.refresh(focal_item_index=focal_item_index)
 
     def render_content_heap(self, heap, focal_item_index):
+        self.num_content_items = len(heap)
         self.content_pad.erase()
-        if not heap:
+        if not self.num_content_items:
             return
-        if len(heap) != self.content_pad_dimensions()[0]:
+        if self.num_content_items > self.content_pad_dimensions()[0]:
             self.resize_content_pad(len(heap))
         hc = list(heap)
         current_index = 0
@@ -396,31 +399,41 @@ class Display(object): # {{{2
     #     self.window.refresh()
 
     def refresh(self, focal_item_index):
+        # content_height, content_width = self.content_pad_dimensions()
         screen_height, screen_width = self.screen_dimensions()
-        content_height, content_width = self.content_pad_dimensions()
-        available_height = self.content_pad_available_display_dimensions()[0]
-        if content_height < available_height:
-            screen_top = screen_height - content_height - 2
-            content_top = 0
+        self.stdscr.noutrefresh()
+        if not self.num_content_items:
+            self.content_pad.noutrefresh(
+                    0,
+                    0,
+                    0,
+                    0,
+                    screen_height-3,
+                    screen_width,
+                    )
         else:
-            screen_top = 0
-            current_item_row = content_height - focal_item_index
-            half_height = int(available_height / 2)
-            if current_item_row > (content_height - half_height):
-                content_top = content_height - available_height - 1
-            elif current_item_row < half_height:
+            available_height = self.content_pad_available_display_dimensions()[0]
+            if self.num_content_items < available_height:
+                screen_top = screen_height - self.num_content_items - 2
                 content_top = 0
             else:
-                content_top = current_item_row - half_height - 1
-        self.stdscr.noutrefresh()
-        self.content_pad.noutrefresh(
-                content_top,
-                0,
-                screen_top,
-                0,
-                screen_height-3,
-                screen_width,
-                )
+                screen_top = 0
+                current_item_row = self.num_content_items - focal_item_index
+                half_height = int(available_height / 2)
+                if current_item_row > (self.num_content_items - half_height):
+                    content_top = self.num_content_items - available_height - 1
+                elif current_item_row < half_height:
+                    content_top = 0
+                else:
+                    content_top = current_item_row - half_height - 1
+            self.content_pad.noutrefresh(
+                    content_top,
+                    0,
+                    screen_top,
+                    0,
+                    screen_height-3,
+                    screen_width,
+                    )
         curses.doupdate()
 
     ### Input
@@ -837,18 +850,19 @@ class Selector(object): # {{{2
                 if current_query != "":
                     current_query = current_query[:-1]
                     current_heaps.pop()
-            else:
+            elif keycode is not None:
                 # normal char
                 try:
                     current_query += keycode
                     current_heaps.append(self._new_heap(current_query, current_heaps[-1]))
                 except ValueError:
                     pass
-            self.render(
-                    heap=current_heaps[-1],
-                    focal_item_index=focal_item_index,
-                    query=current_query,
-                    )
+            if keycode is not None:
+                self.render(
+                        heap=current_heaps[-1],
+                        focal_item_index=focal_item_index,
+                        query=current_query,
+                        )
 
     def _extract_selected_from_heap(self, heap, focal_item_index):
         if self.multiselection_mode:
@@ -865,7 +879,7 @@ class Selector(object): # {{{2
         index = 0
         while heap:
             score, item = heapq.heappop(heap)
-            if item.is_focal_item_index or index == focal_item_index:
+            if item.is_selected or index == focal_item_index:
                 focal_item_index_items.append(item)
             index += 1
         return focal_item_index_items
@@ -1394,7 +1408,8 @@ class Controller(object): # {{{2
         selected = self.run_query()
         if not selected:
             sys.exit(1) # raise error to let parent shell know nothing was selected
-        filepaths = [entry.filepath for entry in found]
+        filepaths = [entry.filepath for entry in selected]
+        self.display.stop()
         self.apply_action(filepaths, as_subprocess=False)
 
     def print_list(self,
