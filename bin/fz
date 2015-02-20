@@ -418,6 +418,7 @@ class Display(object): # {{{2
     #     self.window.refresh()
 
     def refresh(self, focal_item_index):
+        # debugf = open("fz-debug.txt", "w")
         try:
             content_height, content_width = self.content_pad_dimensions()
             screen_height, screen_width = self.screen_dimensions()
@@ -443,11 +444,17 @@ class Display(object): # {{{2
                     current_item_row = content_height - focal_item_index
                     half_height = int(available_height / 2)
                     if current_item_row > (num_content_items - half_height):
-                        content_top = num_content_items - available_height - 1
+                        # debugf.write("here-3\n"); debugf.flush()
+                        content_top = content_height - available_height - 1
                     elif current_item_row < half_height:
                         content_top = 0
                     else:
                         content_top = current_item_row - half_height - 1
+                    # # here-2
+                    # # here-3
+                    # # 437, 0, 40, 396, 0
+                    # debugf.write("{}, {}, {}, {}, {}\n".format(num_content_items, focal_item_index, available_height, content_top, screen_top) )
+                    # debugf.flush()
                 self.content_pad.noutrefresh(
                         content_top,
                         0,
