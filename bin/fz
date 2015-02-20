@@ -458,7 +458,7 @@ class Display(object): # {{{2
                         )
             curses.doupdate()
         except Exception as e:
-            pass
+            raise
 
     ### Input
 
@@ -1028,7 +1028,10 @@ class DirectorySource(object): # {{{2
         if not self.include_hidden:
             # hidden_dir_pattern = r".*{s}\.[^{s}]".format(s=os.path.sep)
             # hidden_dir_pattern = r"^.*{s}\.[^.{s}][^{s}]+$".format(s=os.path.sep)
-            hidden_dir_pattern = r"(^\.[^\.]|{s}\.[^\.])".format(s=os.path.sep)
+            hidden_dir_pattern = r"(^(\.{s})?\.[^.{s}]|{s}\.[^.])".format(s=os.path.sep)
+            # hidden_dir_pattern = r"^\.[^.{s}]".format(s=os.path.sep)
+            # hidden_dir_pattern = r"{s}\.[^.]".format(s=os.path.sep)
+            # hidden_dir_pattern = r"^\./\.cac".format(s=os.path.sep)
             try:
                 dirs_to_exclude.append(hidden_dir_pattern)
             except AttributeError:
