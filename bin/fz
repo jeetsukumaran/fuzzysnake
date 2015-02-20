@@ -602,11 +602,11 @@ class Display(object): # {{{2
 
     def page_down(self, focal_item_index):
         available_height = self.content_pad_available_display_dimensions()[0]
-        return self.move_focus_to_next(focal_item_index, available_height - 2)
+        return self.move_focus_to_next(focal_item_index, available_height)
 
     def page_up(self, focal_item_index):
         available_height = self.content_pad_available_display_dimensions()[0]
-        return self.move_focus_to_previous(focal_item_index, available_height - 2)
+        return self.move_focus_to_previous(focal_item_index, available_height)
 
     ### Special
 
