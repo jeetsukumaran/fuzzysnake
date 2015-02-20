@@ -19,6 +19,7 @@
 *.bbprojectd
 *.kpf
 .idea/*
+tags
 
 # Python
 *.py[cod]

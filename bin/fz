@@ -2,7 +2,7 @@
 
 ###############################################################################
 ##
-##  Copyright 2014 Jeet Sukumaran.
+##  Copyright 2014-2015 Jeet Sukumaran.
 ##
 ##  Licensed under the Apache License, Version 2.0 (the "License");
 ##  you may not use this file except in compliance with the License.
@@ -16,8 +16,7 @@
 ##  See the License for the specific language governing permissions and
 ##  limitations under the License.
 ##
-##
-## Modified by Jeet Sukumaran from "quickfind"::
+##  Based on ideas and code from "quickfind"::
 ##
 ##      quickfind
 ##      https://github.com/Refefer/quickfind
@@ -30,6 +29,8 @@ A utility to find, list, filter, and act on files or directories from your
 shell, using dynamic fuzzy-matching of patterns as you type them in.
 """
 
+# Imports {{{1
+# ==============================================================================
 import os
 import sys
 import termios
@@ -43,7 +44,6 @@ import re
 import itertools
 import collections
 import subprocess
-
 try:
     from StringIO import StringIO # Python 2 legacy support: StringIO in this module is the one needed (not io)
 except ImportError:
@@ -59,17 +59,19 @@ else:
     unicode_str = lambda x: unicode(x, errors="ignore")
 import shlex
 import itertools
+# }}}1
 
+# Program Metadata {{{1
+# ==============================================================================
 __prog__ = os.path.basename(__file__)
-__version__ = "3.0.0"
+__version__ = "4.0.0"
 __description__ = __doc__
 __author__ = 'Jeet Sukumaran'
-__copyright__ = 'Copyright (C) 2014 Jeet Sukumaran.'
+__copyright__ = 'Copyright (C) 2015 Jeet Sukumaran.'
+# }}}1
 
-FIRST_ITEM_ROW_OFFSET = 3
-STATUS_BAR_OFFSET     = 2
-QUERY_ROW_OFFSET      = 1
-
+# Text Utilities {{{1
+# ==============================================================================
 def levenshtein(s1, s2):
     if len(s1) < len(s2):
         return levenshtein(s2, s1)
@@ -90,16 +92,6 @@ def levenshtein(s1, s2):
 
     return previous_row[-1]
 
-def dump_stack(out=None):
-    import inspect
-    if out is None:
-        out = sys.stderr
-    for frame, filename, line_num, func, source_code, source_index in inspect.stack()[2:]:
-        if source_code is None:
-            out.write("{}: {}\n".format(filename, line_num))
-        else:
-            out.write("{}: {}: {}\n".format(filename, line_num, source_code[source_index].strip()))
-
 def truncate_front(line, length=70, truncation_str="<"):
     reduce_amt = len(line) - length
     # If it already fits
@@ -117,6 +109,558 @@ def truncate_middle(line, length=70, truncation_str="..."):
     start = (len(line) / 2) - (reduce_amt / 2)
     end = start + reduce_amt
     return "{}{}{}".format(line[:start], truncation_str, line[end:])
+# }}}1
+
+# CURSES {{{1
+# ==============================================================================
+
+class Subscreen(object): # {{{2
+
+    def __enter__(self):
+
+        # clone stdout: this allows us to open
+        # the curses window in a subshell and
+        # print the result to the "real" stdout
+        # on exit
+        self.prev_stdout_fd = os.dup(sys.stdout.fileno())
+        self.new_stdout_clone = os.open("/dev/tty", os.O_WRONLY)
+        os.dup2(self.new_stdout_clone, sys.stdout.fileno()) # 1
+        self.prev_stdout = sys.stdout
+
+        # initialize screen
+        self.stdscr = curses.initscr()
+        curses.noecho()
+        curses.cbreak()
+        # self.stdscr.keypad(1)
+        try:
+            curses.start_color()
+        except:
+            pass
+        self.cursor_setting = None
+        try:
+            self.cursor_setting = curses.curs_set(0)
+        except:
+            pass
+        return self.stdscr
+
+    def __exit__(self, exc_type, exc_value, traceback):
+
+        # restore terminal
+        # self.stdscr.keypad(0)
+        if self.cursor_setting is not None:
+            try:
+                curses.curs_set(self.cursor_setting)
+            except:
+                pass
+        curses.echo()
+        curses.nocbreak()
+        curses.endwin()
+
+        # restore standard output
+        os.dup2(self.prev_stdout_fd, self.prev_stdout.fileno())
+        self.stdout = self.prev_stdout
+# }}}2
+
+class Display(object): # {{{2
+
+    # class variables {{{3
+    FIRST_ITEM_ROW_OFFSET = 3
+    STATUS_BAR_OFFSET     = 2
+    QUERY_ROW_OFFSET      = 1
+    # }}}3
+
+    # key codes {{{3
+    KEYCODES = collections.OrderedDict()
+    KEYCODES[0] = "NUL"
+    for idx, c in enumerate("ABCDEFGHIJKLMNOPQRSTUVWXYZ"):
+        KEYCODES[idx+1] = "CTRL-{}".format(c)
+    KEYCODES[27] = "ESC"
+    KEYCODES[28] = "FS"
+    # for idx in range(32, 127):
+    #     KEYCODES[idx] = chr(idx)
+    KEYCODES[127] = "DEL"
+    KEYCODES[-65] = "UP"
+    KEYCODES[-66] = "DOWN"
+    KEYCODES[-67] = "RIGHT"
+    KEYCODES[-68] = "LEFT"
+
+    # }}}3
+
+    class OutOfWindowBoundsException(Exception):
+        pass
+
+    @staticmethod
+    def get_console_dimensions():
+        env = os.environ
+        def ioctl_GWINSZ(fd):
+            try:
+                cr = struct.unpack('hh', fcntl.ioctl(fd, termios.TIOCGWINSZ, '1234'))
+            except:
+                return
+            return cr
+        return ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2) or (25, 80)
+
+    @staticmethod
+    def stop():
+        curses.echo()
+        curses.endwin()
+
+    ### Life-cycle
+
+    def __init__(self, stdscr, nrows=None):
+        self.stdscr = stdscr
+        self.is_input_blocking = None
+        self.content_pad = None
+        self.content_vscroll_offset = 0
+        self._is_input_blocking = None
+        self.start(nrows=nrows)
+        self.query_length = 0
+        self.content_limit = 1000
+        self.content_items = None
+
+    def start(self, nrows=None):
+        cv_height, cv_width = self.content_pad_available_display_dimensions()
+        if nrows is None:
+            nrows = cv_height
+        self.content_pad = curses.newpad(nrows, cv_width)
+
+        curses.use_default_colors()
+
+        curses.init_pair(1, -1, -1)
+        self.default_color = curses.color_pair(1)
+
+        curses.init_pair(2, curses.COLOR_GREEN, -1)
+        self.match_color = curses.color_pair(2) | curses.A_UNDERLINE
+
+        curses.init_pair(3, curses.COLOR_MAGENTA, -1)
+        self.is_selected_color = curses.color_pair(3) | curses.A_BOLD
+
+        curses.init_pair(4, -1, -1)
+        self.current_row_color = curses.color_pair(4) # note: will be reversed below
+
+        curses.init_pair(5, curses.COLOR_MAGENTA, -1)
+        self.prompt_color = curses.color_pair(5) | curses.A_BOLD
+
+        curses.init_pair(6, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        self.status_bar_color = curses.color_pair(6) | curses.A_BOLD | curses.A_REVERSE
+
+        curses.init_pair(7, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        self.spinner_color = curses.color_pair(7) | curses.A_BOLD | curses.A_REVERSE
+
+        curses.init_pair(8, curses.COLOR_YELLOW, curses.COLOR_RED)
+        self.error_color = curses.color_pair(8) | curses.A_BOLD | curses.A_REVERSE
+
+        self.is_input_blocking = False
+
+    def restart(self):
+        # self.stdscr.refresh()
+        self.refresh()
+
+    ### Book-keeping
+
+    def screen_dimensions(self):
+        return self.stdscr.getmaxyx()
+
+    def content_pad_dimensions(self):
+        return self.content_pad.getmaxyx()
+
+    def content_pad_available_display_dimensions(self):
+        screen_height, screen_width = self.screen_dimensions()
+        return screen_height - 3, screen_width
+
+    def resize_content_pad(self, nrows):
+        self.content_pad.resize(nrows, self.screen_dimensions()[1])
+
+    def _get_input_blocking(self):
+        return self._is_input_blocking
+    def _set_input_blocking(self, is_blocking):
+        self._is_input_blocking = is_blocking
+        if self._is_input_blocking:
+            self.stdscr.nodelay(0)
+        else:
+            self.stdscr.nodelay(1)
+    is_input_blocking = property(_get_input_blocking, _set_input_blocking)
+
+    def set_cursor(self, value):
+        if value is None:
+            return
+        try:
+            return curses.curs_set(value)
+        except:
+            pass
+
+    ### Rendering (Framework)
+
+    def error(self, message, erase=True):
+        if erase:
+            self.content_pad.erase()
+        height, width = self.screen_dimensions()
+        self.write_status_bar(message, self.error_color, refresh=True)
+        self.stdscr.move(height - self.STATUS_BAR_OFFSET, min(len(message), self.screen_dimensions()[1]-1))
+        self.pause_for_keypress()
+
+    def write_status_bar(self, s, color=None, refresh=True):
+        if color is None:
+            color = self.status_bar_color
+        height, width = self.screen_dimensions()
+        # self.stdscr.clrtoeol()
+        padded_message = s.ljust(width-1)[:width-1]
+        self.stdscr.addstr(height - self.STATUS_BAR_OFFSET, 0, padded_message, color)
+        if refresh:
+            self.stdscr.refresh()
+
+    ### Rendering (Content)
+
+    def render_main(self,
+            heap,
+            focal_item_index,
+            query,
+            match_type,
+            whole_path_matching,
+            status_bar_extra_info=None,
+            ):
+        self.stdscr.erase()
+        self.render_content_items(heap, focal_item_index)
+        self.render_query(
+                query=query,
+                match_type=match_type,
+                whole_path_matching=whole_path_matching,
+                focal_item_index=focal_item_index,
+                status_bar_extra_info=status_bar_extra_info)
+        self.refresh(focal_item_index=focal_item_index)
+        return self.content_items
+
+    def render_content_items(self, heap, focal_item_index):
+        self.content_pad.erase()
+        self.content_items = []
+        if heap:
+            if len(heap) > self.content_pad_dimensions()[0]:
+                self.resize_content_pad(len(heap))
+            hc = list(heap)
+            current_index = 0
+            while hc:
+                score, item = heapq.heappop(hc)
+                self.content_items.append(item)
+                try:
+                    self.render_content_item(current_index, item, current_index==focal_item_index)
+                except Display.OutOfWindowBoundsException:
+                    break
+                current_index += 1
+        return self.content_items
+
+    def render_content_item(self,
+            item_index,
+            item,
+            is_focal_item):
+        height, width = self.content_pad_dimensions()
+        row = height - item_index - 1
+        if row < 0:
+            raise Display.OutOfWindowBoundsException
+        # self.content_pad.move(row, 0)
+        # self.content_pad.clrtoeol()
+        # -4: account for leader, and avoid writing at last position
+        display_name = truncate_middle(item.display_name, width-4).ljust(width-4)
+        weight = curses.A_NORMAL
+        color = self.default_color
+        if item.is_selected:
+            self.content_pad.addstr(row, 0, "#", self.is_selected_color | curses.A_BOLD)
+            color = self.is_selected_color
+        else:
+            self.content_pad.addstr(row, 0, " ", self.default_color)
+        if is_focal_item:
+            self.content_pad.addstr(row, 1, "> ", self.default_color)
+            color = self.current_row_color
+            # to reverse all parts of the line (included matched)
+            weight = curses.A_REVERSE
+        else:
+            self.content_pad.addstr(row, 1, "  ", self.default_color)
+        if item.score > 0:
+            left = display_name[:item.match_start]
+            main = display_name[item.match_start:item.match_end]
+            right = display_name[item.match_end:]
+            self.content_pad.addstr(row, 3, left, color | weight)
+            self.content_pad.addstr(row, 3 + len(left), main, self.match_color | weight)
+            self.content_pad.addstr(row, 3 + len(left) + len(main), right, color | weight)
+        else:
+            self.content_pad.addstr(row, 3, display_name, color | weight)
+
+    def render_query(self,
+            query,
+            match_type,
+            whole_path_matching,
+            focal_item_index,
+            status_bar_extra_info=None,
+            ):
+        height, width = self.screen_dimensions()
+        status_bar_components = []
+        if match_type == "fuzzy":
+            prompt = "? "
+            status_bar_components.append("[^R] expression: fuzzy  ")
+        elif match_type == "literal":
+            prompt = "= "
+            status_bar_components.append("[^R] expression: literal")
+        elif match_type == "regexp":
+            prompt = "% "
+            status_bar_components.append("[^R] expression: regular")
+        if whole_path_matching:
+            status_bar_components.append("[^W] match: whole path")
+        else:
+            status_bar_components.append("[^W] match: basename")
+        status_bar = " ".join(status_bar_components)
+        if status_bar_extra_info is None:
+            status_bar_extra_info = ""
+        if status_bar_extra_info:
+            remaining = width - len(status_bar) - 1
+            if remaining > 0:
+                status_bar += (("({})".format(truncate_front(status_bar_extra_info, remaining))).rjust(remaining))
+                # num_entries = len(self.content_items)
+                # if num_entries:
+                #     focal_item_index += 1
+                # status_bar += ("{} of {} entries (".format(focal_item_index, num_entries, truncate_front(status_bar_extra_info, remaining).rjust(remaining)
+        status_bar = status_bar.ljust(width-1)[:width-1]
+        self.stdscr.addstr(height - self.STATUS_BAR_OFFSET, 0, status_bar, self.status_bar_color)
+        q = prompt + query
+        self.query_length = len(q)
+        self.stdscr.addstr(height - self.QUERY_ROW_OFFSET, 0, q, self.prompt_color)
+
+    ### Displaying
+
+    def clear(self):
+        self.stdscr.erase()
+
+    def clear_content(self):
+        self.content_pad.erase()
+
+    # def flush(self):
+    #     height, width = self.window_size()
+    #     self.window.move(height - QUERY_ROW_OFFSET, self.querylen)
+    #     self.window.refresh()
+
+    def refresh(self, focal_item_index):
+        try:
+            content_height, content_width = self.content_pad_dimensions()
+            screen_height, screen_width = self.screen_dimensions()
+            self.stdscr.noutrefresh()
+            num_content_items = len(self.content_items)
+            if not num_content_items:
+                self.content_pad.noutrefresh(
+                        0,
+                        0,
+                        0,
+                        0,
+                        screen_height-3,
+                        screen_width,
+                        )
+            else:
+                available_height = self.content_pad_available_display_dimensions()[0]
+                if num_content_items < available_height:
+                    screen_top = screen_height - num_content_items - 2
+                    content_top = content_height - num_content_items
+                else:
+                    screen_top = 0
+                    half_available_height = int(available_height / 2)
+                    if focal_item_index < half_available_height:
+                        # bottom
+                        content_top = content_height - available_height - 1
+                    elif focal_item_index + half_available_height >= num_content_items:
+                        # top
+                        content_top = content_height - num_content_items
+                    else:
+                        # middle
+                        current_item_row = content_height - focal_item_index
+                        content_top = current_item_row - half_available_height - 1
+                self.content_pad.noutrefresh(
+                        content_top,
+                        0,
+                        screen_top,
+                        0,
+                        screen_height-3,
+                        screen_width,
+                        )
+            curses.doupdate()
+        except Exception as e:
+            raise
+
+    ### Input
+
+    def getch(self, blocking=None, echo=None):
+        # set state
+        self.is_input_blocking = blocking
+        if echo is False:
+            curses.noecho()
+        elif echo is True:
+            curses.echo()
+        ch = self.stdscr.getch()
+        ### FOLLOWING HACK NOT NEEDED ANY MORE, DUE TO FOLLOWING APPROACH::
+        ###
+        ###    with os.fdopen(0, 'r') as src:
+        ###       for item in src.read().split("\n"):
+        ###            # do stuff!
+        ###    sys.stdin = open("/dev/tty", "r")
+        ###
+        # if blocking and ch == -1:
+        #     # We are here because files were read from standard input
+        #     # and now input is unavailable. This hack works on POSIX
+        #     # systems ... but ARROW keys lead to exit in the loop
+        #     # because we checking for escape (by itself) in a non-blocking
+        #     # way.
+        #     import tty
+        #     fd = sys.stdin.fileno()
+        #     tty_mode = tty.tcgetattr(fd)
+        #     tty.setcbreak(fd)
+        #     try:
+        #         ch = ord(os.read(fd, 1))
+        #     finally:
+        #         tty.tcsetattr(fd, tty.TCSAFLUSH, tty_mode)
+        #     assert isinstance(ch, int)
+
+        # restore state
+        if blocking:
+            self.is_input_blocking = False
+        if echo:
+            curses.noecho()
+        return ch
+
+    def get_keycode(self, blocking=True, echo=False):
+        ch_value = self.getch(blocking=blocking, echo=echo)
+        if ch_value == -1:
+            return None
+        elif ch_value == 27:
+            # Escape: could be just Escape, could be Ansi escape for
+            # arrows
+            # just escape? try non-blocking read to see if
+            # any other characters
+            ch_value = self.getch(blocking=False, echo=echo)
+            if ch_value == -1:
+                # Nope: just escape
+                return self.KEYCODES[27]
+            # other characters available
+            # assuming arrow-key, we discard
+            # the current and read the next
+            ch_value = self.getch(blocking=True, echo=echo)
+            return self.KEYCODES.get(-ch_value, None) # None if not handled
+        else:
+            return self.KEYCODES.get(ch_value, chr(ch_value))
+
+    def get_query_keycode(self, echo=False):
+        height, width = self.screen_dimensions()
+        self.stdscr.move(height - self.QUERY_ROW_OFFSET, self.query_length)
+        cursor = self.set_cursor(2)
+        keycode = self.get_keycode(blocking=True, echo=echo)
+        cursor = self.set_cursor(cursor)
+        return keycode
+
+    def pause_for_keypress(self):
+        cursor = self.set_cursor(2)
+        ch = self.getch(blocking=True)
+        self.set_cursor(cursor)
+        return ch
+
+    def is_cancel_keycode(self, keycode):
+        return keycode in ("ESC", "FS", "CTRL-C",)
+
+    ### Content Interaction
+
+    # Does not work: heap is not stable for random access.
+    # So need to
+    #   (a) make copy of list, pop off till we reach respective indices, TWICE
+    #   (b) cache items in list somewhere
+    #   (c) rebuild entire screen
+    #   ... for now, opting for last
+    def update_focal_item(self, current_focal_item_index, new_focal_item_index):
+        if new_focal_item_index != current_focal_item_index:
+            # try:
+            #     self.render_content_item(current_focal_item_index, self.content_items[current_focal_item_index][1], False)
+            # except Display.OutOfWindowBoundsException:
+            #     pass
+            # try:
+            #     self.render_content_item(new_focal_item_index, self.content_items[new_focal_item_index][1], True)
+            # except Display.OutOfWindowBoundsException:
+            #     pass
+            self.render_content_item(current_focal_item_index, self.content_items[current_focal_item_index], False)
+            self.render_content_item(new_focal_item_index, self.content_items[new_focal_item_index], True)
+            self.refresh(new_focal_item_index)
+
+    def move_focus_to_next(self, focal_item_index, count=1):
+        # Since we display from the bottom up, moving 'down' or 'next' means
+        # moving to a *higher*-scoring result, which requires *decrement* the
+        # index to move *up* the list, which is sorted incrementally by score.
+        new_item_index = max(0, focal_item_index - count)
+        self.update_focal_item(focal_item_index, new_item_index)
+        return new_item_index
+
+    def move_focus_to_previous(self, focal_item_index, count=1):
+        # Since we display from the bottom up, moving 'up' or 'previous' means
+        # moving to a *lower*-ring result, which requires *incrementing* the
+        # index to move *down* the list, which is sorted incrementally by score.
+        new_item_index = min(len(self.content_items)-1, focal_item_index + count)
+        # new_item_index = focal_item_index + 1
+        if new_item_index < 0:
+            new_item_index = 0
+        self.update_focal_item(focal_item_index, new_item_index)
+        return new_item_index
+
+    def page_down(self, focal_item_index):
+        available_height = self.content_pad_available_display_dimensions()[0]
+        return self.move_focus_to_next(focal_item_index, available_height)
+
+    def page_up(self, focal_item_index):
+        available_height = self.content_pad_available_display_dimensions()[0]
+        return self.move_focus_to_previous(focal_item_index, available_height)
+
+    ### Special
+
+    def get_progress_ticker(self):
+        return ProgressTicker(display=self, color=self.spinner_color)
+
+# }}}2
+
+class ProgressTicker(object): # {{{2
+
+    def __init__(self, display, color):
+        self.display = display
+        self.color = color
+        self.current_step = 0
+        self.spinner_cycle = itertools.cycle(["|", "/", "-", "\\", "-",])
+
+    def check_for_cancel(self):
+        keych = self.display.get_keycode(blocking=False, echo=False)
+        if self.display.is_cancel_keycode(keych):
+            return True
+        return False
+
+    def update(self, message):
+        self.current_step += 1
+        s0 = next(self.spinner_cycle) + " " + message
+        self.display.write_status_bar(s0, color=self.color, refresh=True)
+
+        # height, width = get_screen_dimensions()
+        # # self.window.addstr("[" + next(self.spinner_cycle) + "] " + message)
+        # self.window.move(height - STATUS_BAR_OFFSET, 0)
+        # self.window.addstr(s1, self.spinner_color)
+        # self.window.move(height - STATUS_BAR_OFFSET, min(len(s0), width-1))
+        # self.window.refresh()
+
+# }}}2
+
+
+# }}}1
+
+# Debugging {{{1
+# ==============================================================================
+def dump_stack(out=None):
+    import inspect
+    if out is None:
+        out = sys.stderr
+    for frame, filename, line_num, func, source_code, source_index in inspect.stack()[2:]:
+        if source_code is None:
+            out.write("{}: {}\n".format(filename, line_num))
+        else:
+            out.write("{}: {}: {}\n".format(filename, line_num, source_code[source_index].strip()))
+# }}}1
+
+# External Command and Event Handling {{{1
+# ==============================================================================
 
 def compose_command(cmd,
         args=None,
@@ -157,22 +701,16 @@ def execute_command(cmd,
             # process is replaced by it.
             os.execvp(cmd[0], cmd)
         else:
-            curses_end()
             p = subprocess.Popen(cmd)
             p.communicate()
     except OSError:
         sys.stderr.write("Failed to execute command with tokens: {}\n".format(cmd))
         sys.exit(1)
 
-def get_screen_dimensions():
-    env = os.environ
-    def ioctl_GWINSZ(fd):
-        try:
-            cr = struct.unpack('hh', fcntl.ioctl(fd, termios.TIOCGWINSZ, '1234'))
-        except:
-            return
-        return cr
-    return ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2) or (25, 80)
+# }}}1
+
+# Data Model {{{1
+# ==============================================================================
 
 class Entry(object):
 
@@ -251,318 +789,35 @@ class Entry(object):
     def __lt__(self, other):
         return self.score < other.score
 
-class SandboxedStdOut(object):
+# }}}1
 
-    def __init__(self, suppress_window=False):
-        self.suppress_window = suppress_window
+# Controllers {{{1
+# ==============================================================================
 
-    def __enter__(self):
-        # clone stdout: this allows us to open
-        # the curses window in a subshell and
-        # print the result to the "real" stdout
-        # on exit
-        if self.suppress_window:
-            return
-        self.prev_stdout_fd = os.dup(sys.stdout.fileno())
-        self.new_stdout_clone = os.open("/dev/tty", os.O_WRONLY)
-        os.dup2(self.new_stdout_clone, sys.stdout.fileno()) # 1
-        self.prev_stdout = sys.stdout
+class Selector(object): # {{{2
 
-    def __exit__(self, exc_type, exc_value, traceback):
-        if self.suppress_window:
-            return
-        os.dup2(self.prev_stdout_fd, self.prev_stdout.fileno())
-        self.stdout = self.prev_stdout
-        # os.dup2(self.old_stdout, 1)
-
-class CursesProgressTicker(object):
-
-    def __init__(self, suppress_window=False):
-        self.suppress_window = suppress_window
-        self.window = None
-        self.current_step = 0
-        self.spinner_cycle = itertools.cycle(["|", "/", "-", "\\", "-",])
-
-    def __enter__(self):
-        if self.suppress_window:
-            return self
-        self.window = curses.initscr()
-        curses.start_color()
-        curses.use_default_colors()
-        curses.noecho()
-        self.window.nodelay(1)
-        curses.init_pair(8, curses.COLOR_YELLOW, curses.COLOR_BLACK)
-        self.spinner_color = curses.color_pair(8) | curses.A_BOLD | curses.A_REVERSE
-        # try:
-        #     curses.curs_set(0)
-        # except curses.error:
-        #     pass
-        self.window.erase()
-        return self
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        if self.suppress_window:
-            return
-        self.cleanup()
-
-    def cleanup(self):
-        if self.suppress_window:
-            return
-        self.window.nodelay(0)
-        curses_end()
-
-    def check_for_cancel(self):
-        if self.suppress_window:
-            return
-        self.window.nodelay(1)
-        ch = self.window.getch()
-        if ch == 27:
-            next_char = self.window.getch()
-            if next_char == -1:
-                raise KeyboardInterrupt()
-        self.window.nodelay(0)
-
-    def update(self, message):
-        if self.suppress_window:
-            return
-        self.current_step += 1
-        height, width = get_screen_dimensions()
-        # self.window.addstr("[" + next(self.spinner_cycle) + "] " + message)
-        s0 = next(self.spinner_cycle) + " " + message
-        s1 = s0.ljust(width-1)[:width-1]
-        self.window.move(height - STATUS_BAR_OFFSET, 0)
-        self.window.addstr(s1, self.spinner_color)
-        self.window.move(height - STATUS_BAR_OFFSET, min(len(s0), width-1))
-        self.window.refresh()
-
-class CursesPrinter(object):
-
-    class OutOfWindowBoundsException(Exception):
+    class DirectoryUpEventException(Exception):
         pass
 
-    def __init__(self):
-        self.querylen = 0
-
-    def init(self):
-
-        # setup window
-        self.window = curses.initscr()
-        curses.start_color()
-        curses.use_default_colors()
-        curses.noecho()
-
-        # color for default text
-        curses.init_pair(1, -1, -1)
-        self.default_color = curses.color_pair(1)
-
-        ## TODO: allow configuration from environmental variable or rc file!
-
-        curses.init_pair(2, curses.COLOR_GREEN, -1)
-        self.match_color = curses.color_pair(2) | curses.A_UNDERLINE
-
-        curses.init_pair(3, curses.COLOR_MAGENTA, -1)
-        self.is_selected_color = curses.color_pair(3) | curses.A_BOLD
-
-        curses.init_pair(4, -1, -1)
-        self.current_row_color = curses.color_pair(4) # note: will be reversed below
-
-        curses.init_pair(5, curses.COLOR_MAGENTA, -1)
-        self.prompt_color = curses.color_pair(5) | curses.A_BOLD
-
-        # curses.init_pair(6, curses.COLOR_GREEN, -1)
-        # self.status_bar_color = curses.color_pair(6) | curses.A_BOLD | curses.A_REVERSE
-
-        curses.init_pair(6, curses.COLOR_GREEN, curses.COLOR_BLACK)
-        self.status_bar_color = curses.color_pair(6) | curses.A_BOLD | curses.A_REVERSE
-
-        # curses.init_pair(6, -1, -1)
-        # self.status_bar_color = curses.color_pair(6) | curses.A_REVERSE
-
-    def cleanup(self):
-        curses_end()
-
-    def print_query(self,
-            query,
-            match_type,
-            whole_path_matching,
-            status_bar_extra_info=None):
-        height, width = self.window_size()
-
-        status_bar_components = []
-        if match_type == "fuzzy":
-            prompt = "? "
-            status_bar_components.append("[^R] expression: fuzzy  ")
-        elif match_type == "literal":
-            prompt = "= "
-            status_bar_components.append("[^R] expression: literal")
-        elif match_type == "regexp":
-            prompt = "% "
-            status_bar_components.append("[^R] expression: regular")
-        if whole_path_matching:
-            status_bar_components.append("[^D] directory match: yes")
-        else:
-            status_bar_components.append("[^D] directory match: no ")
-
-        status_bar = " ".join(status_bar_components)
-        if status_bar_extra_info:
-            remaining = width - len(status_bar) - 1
-            if remaining > 0:
-                status_bar += ("(" + truncate_front(status_bar_extra_info, remaining) + ")").rjust(remaining)
-        status_bar = status_bar.ljust(width-1)[:width-1]
-        self.window.move(height - STATUS_BAR_OFFSET, 0)
-        self.window.addstr(status_bar, self.status_bar_color)
-
-        q = prompt + query
-        self.querylen = len(q)
-        self.window.move(height - QUERY_ROW_OFFSET, 0)
-        self.window.addstr(q, self.prompt_color)
-
-    def print_item(self,
-            idx,
-            item,
-            is_current_row,
-            query):
-        height, width = self.window_size()
-        row = height - idx  - FIRST_ITEM_ROW_OFFSET
-        if row < 0:
-            raise CursesPrinter.OutOfWindowBoundsException
-        self.window.move(row, 0)
-        display_name = truncate_middle(item.display_name, width-3) # account for leader
-        weight = curses.A_NORMAL
-        color = self.default_color
-        if item.is_selected:
-            self.window.addstr("#", self.is_selected_color | curses.A_BOLD)
-            color = self.is_selected_color
-        else:
-            self.window.addstr(" ", self.default_color)
-        if is_current_row:
-            self.window.addstr("> ", self.default_color)
-            color = self.current_row_color
-            # to reverse all parts of the line (included matched)
-            weight = curses.A_REVERSE
-        else:
-            self.window.addstr("  ", self.default_color)
-        if item.score > 0:
-            left = display_name[:item.match_start]
-            main = display_name[item.match_start:item.match_end]
-            right = display_name[item.match_end:]
-            self.window.addstr(left, color | weight)
-            self.window.addstr(main, self.match_color | weight)
-            self.window.addstr(right, color | weight)
-        else:
-            self.window.addstr(display_name, color | weight)
-
-    def clear_query(self):
-        height, width = self.window_size()
-        q = " " * (width - 1)
-        self.window.move(height - QUERY_ROW_OFFSET, 0)
-        self.window.addstr(q, self.prompt_color)
-
-    def clear(self):
-        self.window.clear()
-
-    def flush(self):
-        height, width = self.window_size()
-        self.window.move(height - QUERY_ROW_OFFSET, self.querylen)
-        self.window.refresh()
-
-    def move(self, y, x):
-        self.window.move(y, x)
-        self.window.refresh()
-
-    def window_size(self):
-        # return self.window.getmaxyx() # not as responsive to resizing
-        # return curses.LINES, curses.COLS # not as responsive to resizing
-        return get_screen_dimensions()
-
-    def max_rows(self):
-        return get_screen_dimensions()[0]-3
-
-def curses_error(message):
-    with SandboxedStdOut() as ssout:
-        window = curses.initscr()
-        curses.start_color()
-        curses.use_default_colors()
-        curses.noecho()
-        curses.init_pair(9, curses.COLOR_YELLOW, curses.COLOR_RED)
-        message_color = curses.color_pair(9) | curses.A_BOLD | curses.A_REVERSE
-        height, width = get_screen_dimensions()
-        padded_message = message.ljust(width-1)[:width-1]
-        window.move(height - STATUS_BAR_OFFSET, 0)
-        window.addstr(padded_message, message_color)
-        window.refresh()
-        window.nodelay(0)
-        window.move(height - STATUS_BAR_OFFSET, min(len(message), width-1))
-        ch = window.getch()
-        curses_end()
-
-def curses_end():
-    curses.echo()
-    curses.endwin()
-
-class Searcher(object):
-
-    class PageBackwardEventException(Exception):
-        pass
-
-    class PageForwardEventException(Exception):
+    class DirectoryDownEventException(Exception):
         def __init__(self, selected_items):
             self.selected_items = selected_items
 
     def __init__(self,
+            display,
             ranker,
-            output,
             term_separator=';',
             whole_path_matching=False,
             match_type="fuzzy",
             multiselection_mode=True,
             status_bar_extra_info=None):
+        self.display = display
         self.ranker = ranker
-        self.output = output
         self.term_separator = term_separator
         self.whole_path_matching = whole_path_matching
         self.match_type = match_type
         self.multiselection_mode = multiselection_mode
         self.status_bar_extra_info = status_bar_extra_info
-
-    def _getch(self, blocking=True, silent=None):
-        if blocking:
-            # self.output.window.timeout(-1)
-            self.output.window.nodelay(0)
-        else:
-            # self.output.window.timeout(100)
-            self.output.window.nodelay(1)
-        if silent is True:
-            curses.noecho()
-        elif silent is False:
-            curses.echo()
-        ch = self.output.window.getch()
-        ### FOLLOWING HACK NOT NEEDED ANY MORE, DUE TO FOLLOWING APPROACH::
-        ###
-        ###    with os.fdopen(0, 'r') as src:
-        ###       for item in src.read().split("\n"):
-        ###            # do stuff!
-        ###    sys.stdin = open("/dev/tty", "r")
-        ###
-        # if blocking and ch == -1:
-        #     # We are here because files were read from standard input
-        #     # and now input is unavailable. This hack works on POSIX
-        #     # systems ... but ARROW keys lead to exit in the loop
-        #     # because we checking for escape (by itself) in a non-blocking
-        #     # way.
-        #     import tty
-        #     fd = sys.stdin.fileno()
-        #     tty_mode = tty.tcgetattr(fd)
-        #     tty.setcbreak(fd)
-        #     try:
-        #         ch = ord(os.read(fd, 1))
-        #     finally:
-        #         tty.tcsetattr(fd, tty.TCSAFLUSH, tty_mode)
-        #     assert isinstance(ch, int)
-        if blocking: # restore
-            # self.output.window.timeout(-1)
-            self.output.window.nodelay(0)
-        return ch
 
     def _new_heap(self, query, cur_heap):
         newHeap = []
@@ -597,204 +852,204 @@ class Searcher(object):
             current_heaps.append(self._new_heap(current_query, current_heaps[-1]))
         return current_heaps
 
-    def _select_next(self, current_selected):
-        # Since we display from the bottom up, moving 'down' or 'next' means
-        # moving to a *higher*-scoring result, which requires *decrement* the
-        # index to move *up* the list, which is sorted incrementally by score.
-        return max(0, current_selected - 1)
-
-    def _select_previous(self, current_selected, max_results):
-        # Since we display from the bottom up, moving 'up' or 'previous' means
-        # moving to a *lower*-scoring result, which requires *incrementing* the
-        # index to move *down* the list, which is sorted incrementally by score.
-        return min(min(self.output.max_rows(), max_results-1), current_selected + 1)
-
-    def _loop(self, current_heaps):
+    def _loop(self, current_heaps, display_items):
         heapq.heapify(current_heaps[0])
         current_query = ""
-        selected = 0
+        focal_item_index = 0
         while True:
-            self.output.window.timeout(-1)
-            next_char = self._getch(blocking=True, silent=True)
+            # self.output.window.timeout(-1)
+            # keycode = self.display.get_keycode(blocking=True, echo=False)
+            keycode = self.display.get_query_keycode(echo=False)
 
-            # Escape: could be just Escape, could be Ansi escape for
-            # arrows
-            if next_char == 27:
-                # just escape? try non-blocking read to see if
-                # any other characters
-                next_char = self._getch(blocking=False, silent=True)
-                if next_char == -1:
-                    raise KeyboardInterrupt()
-                # other characters available
-                # assuming arrow-key, we discard
-                # the current and read the next
-                next_char = self._getch(blocking=True, silent=True)
-                # Up/down
-                if next_char == 65:
-                    # <UP>
-                    selected = self._select_previous(selected, len(current_heaps[-1]))
-                elif next_char == 66:
-                    # <DOWN>
-                    selected = self._select_next(selected)
-                elif next_char == 67:
-                    # <RIGHT>
-                    selected_items = self._extract_selected_from_heap(
-                            heap=current_heaps[-1],
-                            selected=selected)
-                    self.output.clear_query()
-                    raise Searcher.PageForwardEventException(selected_items)
-                elif next_char == 68:
-                    # <LEFT>
-                    self.output.clear_query()
-                    raise Searcher.PageBackwardEventException
-            elif next_char == 14:
-                # <CTRL-N>: Next
-                selected = self._select_next(selected)
-            elif next_char == 16:
-                # <CTRL-P>: Previous
-                selected = self._select_previous(selected, len(current_heaps[-1]))
-            elif next_char == 4:
-                # <CTRL-D>: Cycle full-path vs. basename matching
-                self.whole_path_matching = not self.whole_path_matching
-                current_heaps = self._reset_search(current_query, current_heaps)
-            elif next_char == 18:
-                # <CTRL-R>: Cycle matching-modes
-                if self.match_type == "literal":
-                    self.match_type = "regexp"
-                elif self.match_type == "fuzzy":
-                    self.match_type = "literal"
-                else:
-                    self.match_type = "fuzzy"
-                current_heaps = self._reset_search(current_query, current_heaps)
-            elif next_char == 6:
-                # <CTRL-F>: Fuzzy-matching mode
-                self.match_type = "fuzzy"
-                current_heaps = self._reset_search(current_query, current_heaps)
-            elif next_char == 5:
-                # <CTRL-E>: Regular-expression matching mode
-                self.match_type = "regexp"
-                current_heaps = self._reset_search(current_query, current_heaps)
-            elif next_char == 12:
-                # <CTRL-L>: Literal or raw matching mode
-                self.match_type = "literal"
-                current_heaps = self._reset_search(current_query, current_heaps)
-            # # elif next_char == 23:
-            # #     # <CTRL-W>: Toggle whitespace-separated multi-search
-            # elif next_char == 20:
-            #     # <CTRL-T>: Toggle whitespace-separated multi-term query
-            #     self.whitespace_separated_multiquery = not self.whitespace_separated_multiquery
-            #     current_heaps = self._reset_search(current_query, current_heaps)
-            elif next_char == 9:
-                # <TAB>: toggle in multiselection mode; simply consume character otherwise
-                if self.multiselection_mode:
-                    current_heaps[-1][selected][1].is_selected = not current_heaps[-1][selected][1].is_selected
-            elif next_char == 21:
-                # <CTRL-U>: Unmark all in multiselection mode; simply consume character otherwise
-                if self.multiselection_mode:
-                    for w, item in current_heaps[-1]:
-                        item.is_selected = False
-            elif next_char == 1:
-                # <CTRL-A>: Mark all in multiselection mode; simply consume character otherwise
-                if self.multiselection_mode:
-                    for w, item in current_heaps[-1]:
-                        item.is_selected = True
-            else:
-                # Selected
-                if next_char == 10 or next_char == 13: # enter
-                    return self._extract_selected_from_heap(
-                            heap=current_heaps[-1],
-                            selected=selected)
-                selected = 0
-                if next_char in (3, 7, 26, 28):
-                    # <CTRL-C>, <CTRL-G>, <CTRL-Z>, etc.
-                    raise KeyboardInterrupt()
-                elif next_char in (8, 127):
+            if keycode == "ESC":
+                raise KeyboardInterrupt
+            elif keycode == "UP" or keycode == "CTRL-P":
+                focal_item_index = self.display.move_focus_to_previous(focal_item_index)
+            elif keycode == "DOWN" or keycode == "CTRL-N":
+                focal_item_index = self.display.move_focus_to_next(focal_item_index)
+            elif keycode == "CTRL-B":
+                focal_item_index = self.display.page_up(focal_item_index)
+            elif keycode == "CTRL-F":
+                focal_item_index = self.display.page_down(focal_item_index)
+            elif keycode is not None:
+                # following all require full re-rendering
+                if keycode == "RIGHT" or keycode == "CTRL-D":
+                    selected_items = self._extract_selected_from_display_items(
+                            display_items=display_items,
+                            focal_item_index=focal_item_index)
+                    raise Selector.DirectoryDownEventException(selected_items)
+                elif keycode == "LEFT" or keycode == "CTRL-U":
+                    raise Selector.DirectoryUpEventException
+                elif keycode == "CTRL-W":
+                    # <CTRL-W>: Cycle whole-path vs. basename matching
+                    self.whole_path_matching = not self.whole_path_matching
+                    current_heaps = self._reset_search(current_query, current_heaps)
+                elif keycode == "CTRL-R":
+                    # <CTRL-R>: Cycle matching-modes
+                    if self.match_type == "literal":
+                        self.match_type = "regexp"
+                    elif self.match_type == "fuzzy":
+                        self.match_type = "literal"
+                    else:
+                        self.match_type = "fuzzy"
+                    current_heaps = self._reset_search(current_query, current_heaps)
+                # elif keycode == "CTRL-F":
+                #     # <CTRL-F>: Fuzzy-matching mode
+                #     self.match_type = "fuzzy"
+                #     current_heaps = self._reset_search(current_query, current_heaps)
+                # elif keycode == "CTRL-E":
+                #     # <CTRL-E>: Regular-expression matching mode
+                #     self.match_type = "regexp"
+                #     current_heaps = self._reset_search(current_query, current_heaps)
+                # elif keycode == "CTRL-L":
+                #     # <CTRL-L>: Literal or raw matching mode
+                #     self.match_type = "literal"
+                #     current_heaps = self._reset_search(current_query, current_heaps)
+                # # elif keycode == "CTRL-W":
+                # #     # <CTRL-W>: Toggle whitespace-separated multi-search
+                # elif keycode == "CTRL-T":
+                #     # <CTRL-T>: Toggle whitespace-separated multi-term query
+                #     self.whitespace_separated_multiquery = not self.whitespace_separated_multiquery
+                #     current_heaps = self._reset_search(current_query, current_heaps)
+                elif keycode == "CTRL-I":
+                    # <TAB>: toggle in multiselection mode; simply consume character otherwise
+                    if self.multiselection_mode:
+                        display_items[focal_item_index].is_selected = not display_items[focal_item_index].is_selected
+                elif keycode == "CTRL-X":
+                    # <CTRL-X>: Cancel all in multiselection mode; simply consume character otherwise
+                    if self.multiselection_mode:
+                        # for w, item in current_heaps[-1]:
+                        for item in display_items:
+                            item.is_selected = False
+                elif keycode == "CTRL-A":
+                    # <CTRL-A>: Mark all in multiselection mode; simply consume character otherwise
+                    if self.multiselection_mode:
+                        # for w, item in current_heaps[-1]:
+                        for item in display_items:
+                            item.is_selected = True
+                elif keycode == "CTRL-G":
+                    # <CTRL-G>: Invert selection
+                    if self.multiselection_mode:
+                        # for w, item in current_heaps[-1]:
+                        for item in display_items:
+                            item.is_selected = not item.is_selected
+                elif keycode == "CTRL-J" or keycode == "CTRL-M":
+                    return self._extract_selected_from_display_items(
+                            display_items=display_items,
+                            focal_item_index=focal_item_index)
+                elif keycode == "CTRL-H" or keycode == "DEL":
                     # Delete/backspace
                     if current_query != "":
                         current_query = current_query[:-1]
                         current_heaps.pop()
+                        focal_item_index = 0
                 else:
+                    # normal char
                     try:
-                        current_query += chr(next_char)
+                        current_query += keycode
                         current_heaps.append(self._new_heap(current_query, current_heaps[-1]))
+                        focal_item_index = 0
                     except ValueError:
                         pass
-            self._echo(current_query, current_heaps[-1], selected)
+                display_items = self.render(
+                        heap=current_heaps[-1],
+                        focal_item_index=focal_item_index,
+                        query=current_query,
+                        )
 
-    def _extract_selected_from_heap(self, heap, selected):
+    def _extract_selected_from_display_items(self, display_items, focal_item_index):
         if self.multiselection_mode:
-            return self._extract_multi_selected_from_heap(
-                    heap=heap,
-                    selected=selected)
+            display_items[focal_item_index].is_selected = True
+            return [item for item in display_items if item.is_selected]
         else:
-            return self._extract_single_selected_from_heap(
-                    heap=heap,
-                    selected=selected)
+            return [display_items[focal_item_index]]
 
-    def _extract_multi_selected_from_heap(self, heap, selected):
+    def _extract_selected_from_heap(self, heap, focal_item_index):
+        if self.multiselection_mode:
+            return self._extract_multiselected_from_heap(
+                    heap=heap,
+                    focal_item_index=focal_item_index)
+        else:
+            return self._extract_focal_item_from_heap(
+                    heap=heap,
+                    focal_item_index=focal_item_index)
+
+    def _extract_multiselected_from_heap(self, heap, focal_item_index):
         selected_items = []
         index = 0
         while heap:
             score, item = heapq.heappop(heap)
-            if item.is_selected or index == selected:
+            if item.is_selected or index == focal_item_index:
                 selected_items.append(item)
             index += 1
         return selected_items
 
-    def _extract_single_selected_from_heap(self, heap, selected):
-        # return [heap[selected][1]]
-        while selected:
+    def _extract_focal_item_from_heap(self, heap, focal_item_index):
+        # return [heap[focal_item_index][1]]
+        while focal_item_index:
             if not heap:
                 break
             heapq.heappop(heap)
-            selected -= 1
+            focal_item_index -= 1
         return [heap[0][1]] if heap else []
 
-    def _echo(self, current_query, heap, selected):
-        self.output.clear()
-        self.output.print_query(
-                query=current_query,
+    def render(self, heap, focal_item_index, query):
+        return self.display.render_main(
+                heap=heap,
+                focal_item_index=focal_item_index,
+                query=query,
                 match_type=self.match_type,
                 whole_path_matching=self.whole_path_matching,
                 status_bar_extra_info=self.status_bar_extra_info,
                 )
-        # for i, (score, item) in enumerate(heap):
-        hc = list(heap)
-        i = 0
-        while hc:
-            score, item = heapq.heappop(hc)
-            try:
-                self.output.print_item(i, item, i==selected, current_query)
-            except CursesPrinter.OutOfWindowBoundsException:
-                break
-            i += 1
-        self.output.flush()
+
+        # self.display.clear()
+        # self.display.print_query(
+        #         query=current_query,
+        #         match_type=self.match_type,
+        #         whole_path_matching=self.whole_path_matching,
+        #         status_bar_extra_info=self.status_bar_extra_info,
+        #         )
+        # # for i, (score, item) in enumerate(heap):
+        # hc = list(heap)
+        # i = 0
+        # while hc:
+        #     score, item = heapq.heappop(hc)
+        #     try:
+        #         self.output.print_item(i, item, i==selected, current_query)
+        #     except CursesPrinter.OutOfWindowBoundsException:
+        #         break
+        #     i += 1
+        # self.display.refresh()
 
     def run(self,
             items,
-            page_backward_event_handler=None,
-            page_forward_event_handler=None):
-        self.output.init()
+            directory_up_event_handler=None,
+            directory_down_event_handler=None):
         while True:
             try:
                 heap = [(i.score, i) for i in items]
                 heap.sort()
-                self._echo("", heap, 0)
-                return self._loop([heap])
-            except Searcher.PageBackwardEventException as e:
-                if page_backward_event_handler:
-                    items, self.status_bar_extra_info = page_backward_event_handler(e)
-            except Searcher.PageForwardEventException as e:
-                if page_forward_event_handler:
-                    items, self.status_bar_extra_info = page_forward_event_handler(e)
-            finally:
-                self.output.cleanup()
+                display_items = self.render(
+                        heap=heap,
+                        focal_item_index=0,
+                        query="",
+                        )
+                return self._loop([heap], display_items)
+            except Selector.DirectoryUpEventException as e:
+                if directory_up_event_handler:
+                    items, self.status_bar_extra_info = directory_up_event_handler(e)
+            except Selector.DirectoryDownEventException as e:
+                if directory_down_event_handler:
+                    items, self.status_bar_extra_info = directory_down_event_handler(e)
+# }}}2
 
-class DirectorySource(object):
+class DirectorySource(object): # {{{2
 
     dot_dirs_ignore_pattern = None
 
     def __init__(self,
+            display,
             target_filename_patterns=None,
             ignore_directories=True,
             ignore_files=True,
@@ -804,6 +1059,7 @@ class DirectorySource(object):
             files_to_exclude=None,
             filter_for_glob_names=None,
             max_recursion_depth=None):
+        self.display = display
         self.ignore_directories = ignore_directories
         self.ignore_files = ignore_files
         self.respect_gitignores = respect_gitignores
@@ -814,7 +1070,11 @@ class DirectorySource(object):
         self.include_hidden = include_hidden
         if not self.include_hidden:
             # hidden_dir_pattern = r".*{s}\.[^{s}]".format(s=os.path.sep)
-            hidden_dir_pattern = r"^.*{s}\.[^.{s}][^{s}]+$".format(s=os.path.sep)
+            # hidden_dir_pattern = r"^.*{s}\.[^.{s}][^{s}]+$".format(s=os.path.sep)
+            hidden_dir_pattern = r"(^(\.{s})?\.[^.{s}]|{s}\.[^.])".format(s=os.path.sep)
+            # hidden_dir_pattern = r"^\.[^.{s}]".format(s=os.path.sep)
+            # hidden_dir_pattern = r"{s}\.[^.]".format(s=os.path.sep)
+            # hidden_dir_pattern = r"^\./\.cac".format(s=os.path.sep)
             try:
                 dirs_to_exclude.append(hidden_dir_pattern)
             except AttributeError:
@@ -875,80 +1135,81 @@ class DirectorySource(object):
             self.find_parent_gis(start_dir)
         if results is None:
             results = []
-        with SandboxedStdOut(suppress_window=suppress_progress_feedback) as sb:
-            with CursesProgressTicker(suppress_window=suppress_progress_feedback) as progress:
-                total_items_scanned = 0
-                for search_idx, (dirname, dirs, filenames) in enumerate(walk(start_dir)):
-                    progress.check_for_cancel()
-                    # dirname = os.path.normpath(dirname)
-                    total_items_scanned += (1 + len(dirs) + len(filenames))
-                    if search_idx % 100 == 0:
-                        progress.update("Scanning: found {} out of {} names".format(len(results), total_items_scanned))
-                    if self.max_recursion_depth is not None:
-                        recursion_level = dirname.count(os.path.sep)
-                        if recursion_level == self.max_recursion_depth:
-                            del dirs[:]
-                        elif recursion_level > self.max_recursion_depth:
-                            continue
-                    if self.respect_gitignores and ".git" in dirs:
-                        giexclude = os.path.join('.git', 'info', 'exclude')
-                        if os.path.isfile(os.path.join(dirname, giexclude)):
-                            gief = GitIgnoreFilter(dirname, giexclude)
-                            self.git_exclude_filters.append(gief)
-                    if DirectorySource.dot_dirs_ignore_pattern.match(dirname):
-                        continue
-                    if self.dirs_to_exclude is not None and self.dirs_to_exclude.match(dirname):
-                        continue
-                    names = []
-                    if not self.ignore_files:
-                        for f in filenames:
-                            if ((self.files_to_exclude is None or not self.files_to_exclude.match(f))
-                                    and (self.target_filename_pattern is None or self.target_filename_pattern.match(f))
-                                    and (self.filter_for_glob_names is None or any(fnmatch.fnmatch(f, gf) for gf in self.filter_for_glob_names))
-                                    ):
-                                # if self.paths_to_exclude is not None:
-                                #     # only do this if actual paths to exclude
-                                #     ff = os.path.join(dirname, f)
-                                #     if not self.paths_to_exclude.match(f):
-                                #         names.append(f)
-                                # else:
-                                #     names.append(f)
-                                names.append(f)
-                    if not self.ignore_directories:
-                        for candidate_dir in dirs:
-                            if ((not DirectorySource.dot_dirs_ignore_pattern.match(candidate_dir))
-                                    and (self.dirs_to_exclude is None or not self.dirs_to_exclude.match(candidate_dir))
-                                    and (self.filter_for_glob_names is None or all(fnmatch.fnmatch(candidate_dir, gf) for gf in self.filter_for_glob_names))
-                                    ):
-                                names.append(candidate_dir)
-                    if self.respect_gitignores and '.gitignore' in filenames:
-                        gif = GitIgnoreFilter(dirname, '.gitignore', self.git_exclude_filters)
-                        self.filters.append((dirname, gif))
-                    while self.filters: # find filter that applies to current path
-                        path, filter_obj = self.filters[-1]
-                        if dirname.startswith(path):
-                            break
-                        self.filters.pop()
-                    fltr = None
-                    if self.filters:
-                        fltr = self.filters[-1][1] # grab filter object of last filter entry
-                    for name in names:
-                        if fltr is None or fltr(name, dirname):
-                            entry = Entry(dirname=dirname,
-                                    filename=name,
-                                    score=len(results),
-                                    match_start=0,
-                                    match_end=0,
-                                    whole_path_matching=False)
-                            results.append(entry)
-                    # have to delete the names manually
-                    if fltr is not None:
-                        for i in range(len(dirs) - 1, -1, -1):
-                            if not fltr(dirs[i], dirname):
-                                del dirs[i]
+        progress = self.display.get_progress_ticker()
+        total_items_scanned = 0
+        for search_idx, (dirname, dirs, filenames) in enumerate(walk(start_dir)):
+            if progress.check_for_cancel():
+                raise KeyboardInterrupt()
+            # dirname = os.path.normpath(dirname)
+            total_items_scanned += (1 + len(dirs) + len(filenames))
+            if search_idx % 100 == 0:
+                progress.update("Scanning: found {} out of {} names".format(len(results), total_items_scanned))
+            if self.max_recursion_depth is not None:
+                recursion_level = dirname.count(os.path.sep)
+                if recursion_level == self.max_recursion_depth:
+                    del dirs[:]
+                elif recursion_level > self.max_recursion_depth:
+                    continue
+            if self.respect_gitignores and ".git" in dirs:
+                giexclude = os.path.join('.git', 'info', 'exclude')
+                if os.path.isfile(os.path.join(dirname, giexclude)):
+                    gief = GitIgnoreFilter(dirname, giexclude)
+                    self.git_exclude_filters.append(gief)
+            if DirectorySource.dot_dirs_ignore_pattern.match(dirname):
+                continue
+            if self.dirs_to_exclude is not None and self.dirs_to_exclude.match(dirname):
+                continue
+            names = []
+            if not self.ignore_files:
+                for f in filenames:
+                    if ((self.files_to_exclude is None or not self.files_to_exclude.match(f))
+                            and (self.target_filename_pattern is None or self.target_filename_pattern.match(f))
+                            and (self.filter_for_glob_names is None or any(fnmatch.fnmatch(f, gf) for gf in self.filter_for_glob_names))
+                            ):
+                        # if self.paths_to_exclude is not None:
+                        #     # only do this if actual paths to exclude
+                        #     ff = os.path.join(dirname, f)
+                        #     if not self.paths_to_exclude.match(f):
+                        #         names.append(f)
+                        # else:
+                        #     names.append(f)
+                        names.append(f)
+            if not self.ignore_directories:
+                for candidate_dir in dirs:
+                    if ((not DirectorySource.dot_dirs_ignore_pattern.match(candidate_dir))
+                            and (self.dirs_to_exclude is None or not self.dirs_to_exclude.match(candidate_dir))
+                            and (self.filter_for_glob_names is None or all(fnmatch.fnmatch(candidate_dir, gf) for gf in self.filter_for_glob_names))
+                            ):
+                        names.append(candidate_dir)
+            if self.respect_gitignores and '.gitignore' in filenames:
+                gif = GitIgnoreFilter(dirname, '.gitignore', self.git_exclude_filters)
+                self.filters.append((dirname, gif))
+            while self.filters: # find filter that applies to current path
+                path, filter_obj = self.filters[-1]
+                if dirname.startswith(path):
+                    break
+                self.filters.pop()
+            fltr = None
+            if self.filters:
+                fltr = self.filters[-1][1] # grab filter object of last filter entry
+            for name in names:
+                if fltr is None or fltr(name, dirname):
+                    entry = Entry(dirname=dirname,
+                            filename=name,
+                            score=len(results),
+                            match_start=0,
+                            match_end=0,
+                            whole_path_matching=False)
+                    results.append(entry)
+            # have to delete the names manually
+            if fltr is not None:
+                for i in range(len(dirs) - 1, -1, -1):
+                    if not fltr(dirs[i], dirname):
+                        del dirs[i]
         return results
+# }}}2
 
-class GitIgnoreFilter(object):
+class GitIgnoreFilter(object): # {{{2
     # Optimization
     lastdir = None
     last_path_filter = None
@@ -1028,8 +1289,9 @@ class GitIgnoreFilter(object):
                 if fnmatch.fnmatch(fn, f):
                     return False
         return True
+# }}}2
 
-class FuzzyRanker(object):
+class FuzzyRanker(object): # {{{2
 
     class IncompleteRegularExpressionPatternException(Exception):
         pass
@@ -1095,64 +1357,20 @@ class FuzzyRanker(object):
                 agg_score += score
         # return agg_score + self.weight_f(item), match_start, match_end
         return agg_score, match_start, match_end
+# }}}2
 
-class Runner(object):
+class Controller(object): # {{{2
 
-    def __init__(self, args):
+    ### Life-cycle
+
+    def __init__(self, display, args):
+        self.display = display
         self.args = args
         self.editor_path = os.environ.get("FUZZYSNAKE_EDITOR", os.environ.get("EDITOR", "vi"))
 
-    def find(self):
-        raise NotImplementedError()
+    ### Data Accession
 
-    def run(self):
-        found = self.find()
-        if not found:
-            sys.exit(1) # raise error to let parent shell know nothing was selected
-        filepaths = [entry.filepath for entry in found]
-        self.apply_action(filepaths, as_subprocess=False)
-
-    def apply_action(self, filepaths, as_subprocess=False):
-        if args.action_type == "edit":
-            execute_command(self.editor_path, filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
-        elif args.action_type == "open":
-            execute_command("open", filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
-        elif args.action_type == "command":
-            execute_command(args.action_target, filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
-        elif args.action_type == "print":
-            if not hasattr(args, "action_target") or args.action_target == "-":
-                if as_subprocess:
-                    curses_end()
-                for filepath in filepaths:
-                    sys.stdout.write(filepath)
-                    sys.stdout.write("\n")
-                    if not self.args.quiet:
-                        sys.stderr.write(filepath)
-                        sys.stderr.write("\n")
-                if not as_subprocess:
-                    sys.exit(0)
-            else:
-                out = open(os.path.expandvars(os.path.expanduser(args.action_target)), "w")
-                with out:
-                    for filepath in filepaths:
-                        out.write(filepath)
-                        out.write("\n")
-                if not as_subprocess:
-                    sys.exit(0)
-        else:
-            error_msg = "Unrecognized action: '{}'".format(args.action_type)
-            if not as_subprocess:
-                sys.exit(error_msg)
-            else:
-                curses_error(error_msg)
-
-class DirRun(Runner):
-
-    def __init__(self, args):
-        self.args = args
-        self.editor_path = os.environ.get("FUZZYSNAKE_EDITOR", os.environ.get("EDITOR", "vi"))
-
-    def fetch(self, items=None):
+    def scan_search_paths(self, items=None, exit_on_interrupt=False, interrupt_exit_value=1):
         if items is None:
             items = []
         respect_gitignores = not self.args.include_gitignores
@@ -1162,10 +1380,10 @@ class DirRun(Runner):
         else:
             ignore_directories = True
             ignore_files = False
-        if not self.args.paths:
-            self.args.paths = ["."]
+        if not self.args.search_paths:
+            self.args.search_paths = ["."]
         try:
-            for path in self.args.paths:
+            for path in self.args.search_paths:
                 if path == "-":
                     if sys.platform.startswith('win'):
                         raise NotImplementedError("Reading from standard input is not supported on this system at this time")
@@ -1176,6 +1394,17 @@ class DirRun(Runner):
                     # (standard input), and read from that. After this is done and
                     # closed (using the context manager), we must set sys.stdin's
                     # file descriptor to the tty opened for reading.
+                    #
+                    # Alternate approach:
+                    #
+                    #   # if os.isatty(0):
+                    #   #     exit(1)
+                    #   # else:
+                    #   #     # get stdin from tty
+                    #   #     os.dup2(0, 3)
+                    #   #     os.close(0)
+                    #   #     my_stdin = os.fdopen(3, 'r')
+                    #   #     sys.stdin = open('/dev/tty', 'r')
                     with os.fdopen(0, 'r') as src:
                         for item in src.read().split("\n"):
                             item = unicode_str(item)
@@ -1195,68 +1424,31 @@ class DirRun(Runner):
                     # A little inefficient, but avoids cross-application
                     # of .gitignore etc. filters
                     ds = DirectorySource(
-                            target_filename_patterns=args.target_filename_pattern,
+                            display=self.display,
+                            target_filename_patterns=self.args.target_filename_pattern,
                             ignore_directories=ignore_directories,
                             ignore_files=ignore_files,
                             respect_gitignores=respect_gitignores,
-                            include_hidden=args.include_hidden,
-                            dirs_to_exclude=args.dirs_to_exclude,
-                            files_to_exclude=args.files_to_exclude,
-                            filter_for_glob_names=args.filter_for_glob_names,
-                            max_recursion_depth=args.max_recursion_depth)
+                            include_hidden=self.args.include_hidden,
+                            dirs_to_exclude=self.args.dirs_to_exclude,
+                            files_to_exclude=self.args.files_to_exclude,
+                            filter_for_glob_names=self.args.filter_for_glob_names,
+                            max_recursion_depth=self.args.max_recursion_depth)
                     path = os.path.expandvars(os.path.expanduser(path))
                     ds.fetch(start_dir=path,
                             results=items,
-                            suppress_progress_feedback=args.no_progress_window)
+                            suppress_progress_feedback=self.args.no_progress_window)
         except KeyboardInterrupt:
-            pass
+            if exit_on_interrupt:
+                self.exit(interrupt_exit_value)
         return items
 
-    def find(self):
-        items = self.refresh_items()
-        if not items:
-            sys.stderr.write("No valid files or directories found.\n")
-            sys.exit(0)
-        ranker = FuzzyRanker
-        s = Searcher(ranker=ranker,
-                output=CursesPrinter(),
-                term_separator=self.args.term_separator,
-                whole_path_matching=self.args.whole_path_match,
-                match_type=self.args.match_type,
-                multiselection_mode=self.args.multiselection_mode,
-                status_bar_extra_info=self.get_status_bar_extra_info(),
-                )
-        try:
-            with SandboxedStdOut() as ssout:
-                found = s.run(
-                        items,
-                        page_backward_event_handler=self.page_backward_event_handler,
-                        page_forward_event_handler=self.page_forward_event_handler,
-                        )
-        except KeyboardInterrupt:
-            sys.exit(1) # error so no process will execute anything on blank output
-        return found
+    def directory_up_event_handler(self, event_exception_obj):
+        self.args.search_paths = sorted(set([os.path.normpath(os.path.relpath(os.path.abspath(os.path.join(path, os.pardir)))) for path in self.args.search_paths]))
+        items = self.scan_search_paths()
+        return (items, self.get_status_bar_extra_info())
 
-    def print_list(self,
-            out=None,
-            mirror_to_stderr=False):
-        if out is None:
-            out = sys.stdout
-        try:
-            items = self.fetch()
-        except KeyboardInterrupt:
-            sys.exit(1) # error so no process will execute anything on blank output
-        for item in items:
-            item_str = "{}\n".format(item.filepath)
-            out.write(item_str)
-            if mirror_to_stderr:
-                sys.stderr.write(item_str)
-
-    def page_backward_event_handler(self, event_exception_obj):
-        self.args.paths = sorted(set([os.path.normpath(os.path.relpath(os.path.abspath(os.path.join(path, os.pardir)))) for path in self.args.paths]))
-        return (self.refresh_items(), self.get_status_bar_extra_info())
-
-    def page_forward_event_handler(self, event_exception_obj):
+    def directory_down_event_handler(self, event_exception_obj):
         if self.args.directory_search_mode:
             new_dirs = []
             for child in event_exception_obj.selected_items:
@@ -1272,40 +1464,123 @@ class DirRun(Runner):
                     pass
             new_dirs = sorted(set(new_dirs))
             if not new_dirs:
-                curses_error("No valid sub-directories found in new search path(s)")
+                self.display.error("No valid sub-directories found in new search path(s)")
             else:
-                self.args.paths = new_dirs
-            return (self.refresh_items(), self.get_status_bar_extra_info())
+                self.args.search_paths = new_dirs
+            items = self.scan_search_paths()
+            return (items, self.get_status_bar_extra_info())
         else:
             filepaths = [entry.filepath for entry in event_exception_obj.selected_items]
             if not filepaths:
-                curses_error("No valid files found or selected")
+                self.display.error("No valid files found or selected")
             else:
                 self.apply_action(filepaths, as_subprocess=True)
                 # execute_command(self.editor_path, filepaths, verbose=not self.args.quiet, as_subprocess=True)
-            return (self.refresh_items(), self.get_status_bar_extra_info())
-
-    def refresh_items(self):
-        try:
-            items = self.fetch()
-        except KeyboardInterrupt:
-            sys.exit(1) # error so no process will execute anything on blank output
-        return items
+            items = self.scan_search_paths()
+            return (items, self.get_status_bar_extra_info())
 
     def get_status_bar_extra_info(self):
-        if len(self.args.paths) == 1:
-            status_bar_extra_info = "{}".format(os.path.normpath(os.path.abspath(self.args.paths[0])))
+        if len(self.args.search_paths) == 1:
+            status_bar_extra_info = "{}".format(os.path.normpath(os.path.abspath(self.args.search_paths[0])))
         else:
             status_bar_extra_info = "(multiple search paths)"
         return status_bar_extra_info
 
-def build_arg_parser():
+    def apply_action(self, filepaths, as_subprocess=False):
+        self.display.stop()
+        if self.args.action_type == "edit":
+            execute_command(self.editor_path, filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
+        elif self.args.action_type == "open":
+            execute_command("open", filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
+        elif self.args.action_type == "command":
+            execute_command(self.args.action_target, filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
+        elif self.args.action_type == "print":
+            if not hasattr(self.args, "action_target") or self.args.action_target == "-":
+                for filepath in filepaths:
+                    sys.stdout.write(filepath)
+                    sys.stdout.write("\n")
+                    if not self.args.quiet:
+                        sys.stderr.write(filepath)
+                        sys.stderr.write("\n")
+                if not as_subprocess:
+                    self.exit(0)
+            else:
+                out = open(os.path.expandvars(os.path.expanduser(self.args.action_target)), "w")
+                with out:
+                    for filepath in filepaths:
+                        out.write(filepath)
+                        out.write("\n")
+                if not as_subprocess:
+                    self.exit(0)
+        else:
+            error_msg = "Unrecognized action: '{}'".format(args.action_type)
+            if not as_subprocess:
+                self.exit(error_msg)
+            else:
+                self.display.error(error_msg)
+
+    def exit(self, exit_arg):
+        self.display.stop()
+        sys.exit(exit_arg)
+
+    def run(self):
+        selected = self.run_query()
+        if not selected:
+            self.exit(1) # raise error to let parent shell know nothing was selected
+        filepaths = [entry.filepath for entry in selected]
+        self.apply_action(filepaths, as_subprocess=False)
+
+    def print_list(self,
+            out=None,
+            mirror_to_stderr=False):
+        if out is None:
+            out = sys.stdout
+        items = self.scan_search_paths()
+        self.display.stop()
+        for item in items:
+            item_str = "{}\n".format(item.filepath)
+            out.write(item_str)
+            if mirror_to_stderr:
+                sys.stderr.write(item_str)
+
+    def run_query(self):
+        items = self.scan_search_paths()
+        if not items:
+            self.exit("No valid files or directories found.")
+        ranker = FuzzyRanker
+        selector = Selector(
+                display=self.display,
+                ranker=ranker,
+                term_separator=self.args.term_separator,
+                whole_path_matching=self.args.whole_path_match,
+                match_type=self.args.match_type,
+                multiselection_mode=self.args.multiselection_mode,
+                status_bar_extra_info=self.get_status_bar_extra_info(),
+                )
+        try:
+            selected = selector.run(
+                    items,
+                    directory_up_event_handler=self.directory_up_event_handler,
+                    directory_down_event_handler=self.directory_down_event_handler,
+                    )
+        except KeyboardInterrupt:
+            self.exit(1) # error so no process will execute anything on blank output
+        return selected
+
+# }}}2
+
+# }}}1
+
+# CLI {{{1
+# ==============================================================================
+
+def parse_cli_args():  #{{{2
     parser = argparse.ArgumentParser(description=__description__)
     parser.add_argument("--version", action="version", version="FuzzySnake " + __version__)
 
     search_options_section = parser.add_argument_group("Search Options")
     search_options_section.add_argument(
-            "paths",
+            "search_paths",
             metavar="DIR",
             nargs="*",
             help="Top-level directory path(s) to search. Defaults to "
@@ -1348,7 +1623,7 @@ def build_arg_parser():
             help="Match against the *full* path of the file or directory, "
             "including the parent directory name. If not specified, by "
             "default, matching is agains the *basename* only. "
-            "Use `<CTRL-D>` to toggle between full path and basename matching "
+            "Use `<CTRL-W>` to toggle between whole path and basename matching "
             "during the search.")
     query_options_section.add_argument(
             "-t", "--term-separator",
@@ -1920,8 +2195,9 @@ def build_arg_parser():
     parser.set_defaults(action_type="edit")
 
     return parser.parse_args()
+# }}}2
 
-class SetPrintAction(argparse.Action):
+class SetPrintAction(argparse.Action): # {{{2
     def __call__(self,
             parser,
             namespace,
@@ -1932,8 +2208,9 @@ class SetPrintAction(argparse.Action):
             namespace.action_target = "-"
         else:
             namespace.action_target = values
+# }}}2
 
-class SetCustomCommandAction(argparse.Action):
+class SetCustomCommandAction(argparse.Action): # {{{2
     def __call__(self,
             parser,
             namespace,
@@ -1941,11 +2218,22 @@ class SetCustomCommandAction(argparse.Action):
             option_string=None):
         namespace.action_type = "command"
         namespace.action_target = values
+# }}}2
 
-if __name__ == '__main__':
-    args = build_arg_parser()
-    runner = DirRun(args)
-    if args.action_type == "list-and-exit":
-        runner.print_list()
-    else:
-        runner.run()
+# }}}1
+
+def main(): # {{{1
+    args = parse_cli_args()
+    with Subscreen() as stdscr:
+        display = Display(stdscr=stdscr)
+        controller = Controller(display=display, args=args)
+        if args.action_type == "list-and-exit":
+            controller.print_list()
+        else:
+            controller.run()
+# }}}1
+
+if __name__ == '__main__': # {{{1
+    main()
+# }}}1
+
