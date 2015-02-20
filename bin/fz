@@ -788,10 +788,10 @@ class Entry(object):
 
 class Selector(object): # {{{2
 
-    class PageBackwardEventException(Exception):
+    class DirectoryUpEventException(Exception):
         pass
 
-    class PageForwardEventException(Exception):
+    class DirectoryDownEventException(Exception):
         def __init__(self, selected_items):
             self.selected_items = selected_items
 
@@ -875,9 +875,9 @@ class Selector(object): # {{{2
                     selected_items = self._extract_selected_from_display_items(
                             display_items=display_items,
                             focal_item_index=focal_item_index)
-                    raise Selector.PageForwardEventException(selected_items)
+                    raise Selector.DirectoryDownEventException(selected_items)
                 elif keycode == "LEFT" or keycode == "CTRL-U":
-                    raise Selector.PageBackwardEventException
+                    raise Selector.DirectoryUpEventException
                 elif keycode == "CTRL-W":
                     # <CTRL-W>: Cycle whole-path vs. basename matching
                     self.whole_path_matching = not self.whole_path_matching
@@ -1022,8 +1022,8 @@ class Selector(object): # {{{2
 
     def run(self,
             items,
-            page_backward_event_handler=None,
-            page_forward_event_handler=None):
+            directory_up_event_handler=None,
+            directory_down_event_handler=None):
         while True:
             try:
                 heap = [(i.score, i) for i in items]
@@ -1034,12 +1034,12 @@ class Selector(object): # {{{2
                         query="",
                         )
                 return self._loop([heap], display_items)
-            except Selector.PageBackwardEventException as e:
-                if page_backward_event_handler:
-                    items, self.status_bar_extra_info = page_backward_event_handler(e)
-            except Selector.PageForwardEventException as e:
-                if page_forward_event_handler:
-                    items, self.status_bar_extra_info = page_forward_event_handler(e)
+            except Selector.DirectoryUpEventException as e:
+                if directory_up_event_handler:
+                    items, self.status_bar_extra_info = directory_up_event_handler(e)
+            except Selector.DirectoryDownEventException as e:
+                if directory_down_event_handler:
+                    items, self.status_bar_extra_info = directory_down_event_handler(e)
 # }}}2
 
 class DirectorySource(object): # {{{2
@@ -1441,12 +1441,12 @@ class Controller(object): # {{{2
                 self.exit(interrupt_exit_value)
         return items
 
-    def page_backward_event_handler(self, event_exception_obj):
+    def directory_up_event_handler(self, event_exception_obj):
         self.args.search_paths = sorted(set([os.path.normpath(os.path.relpath(os.path.abspath(os.path.join(path, os.pardir)))) for path in self.args.search_paths]))
         items = self.scan_search_paths()
         return (items, self.get_status_bar_extra_info())
 
-    def page_forward_event_handler(self, event_exception_obj):
+    def directory_down_event_handler(self, event_exception_obj):
         if self.args.directory_search_mode:
             new_dirs = []
             for child in event_exception_obj.selected_items:
@@ -1558,8 +1558,8 @@ class Controller(object): # {{{2
         try:
             selected = selector.run(
                     items,
-                    page_backward_event_handler=self.page_backward_event_handler,
-                    page_forward_event_handler=self.page_forward_event_handler,
+                    directory_up_event_handler=self.directory_up_event_handler,
+                    directory_down_event_handler=self.directory_down_event_handler,
                     )
         except KeyboardInterrupt:
             self.exit(1) # error so no process will execute anything on blank output
