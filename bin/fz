@@ -764,7 +764,7 @@ class Selector(object): # {{{2
         # Since we display from the bottom up, moving 'up' or 'previous' means
         # moving to a *lower*-ring result, which requires *incrementing* the
         # index to move *down* the list, which is sorted incrementally by score.
-        return min(max_results, current_selected + 1)
+        return min(max_results-1, current_selected + 1)
 
     def _loop(self, current_heaps):
         heapq.heapify(current_heaps[0])
