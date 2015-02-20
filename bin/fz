@@ -436,7 +436,6 @@ class Display(object): # {{{2
     #     self.window.refresh()
 
     def refresh(self, focal_item_index):
-        # debugf = open("fz-debug.txt", "w")
         try:
             content_height, content_width = self.content_pad_dimensions()
             screen_height, screen_width = self.screen_dimensions()
@@ -461,18 +460,16 @@ class Display(object): # {{{2
                     # current_item_row = num_content_items - focal_item_index
                     current_item_row = content_height - focal_item_index
                     half_height = int(available_height / 2)
-                    if current_item_row > (num_content_items - half_height):
-                        # debugf.write("here-3\n"); debugf.flush()
+
+                    if focal_item_index < half_height:
+                        # bottom
                         content_top = content_height - available_height - 1
-                    elif current_item_row < half_height:
-                        content_top = 0
+                    elif focal_item_index + half_height >= num_content_items:
+                        # top
+                        content_top = content_height - num_content_items
                     else:
+                        # middle
                         content_top = current_item_row - half_height - 1
-                    # # here-2
-                    # # here-3
-                    # # 437, 0, 40, 396, 0
-                    # debugf.write("{}, {}, {}, {}, {}\n".format(num_content_items, focal_item_index, available_height, content_top, screen_top) )
-                    # debugf.flush()
                 self.content_pad.noutrefresh(
                         content_top,
                         0,
@@ -938,6 +935,7 @@ class Selector(object): # {{{2
                     if current_query != "":
                         current_query = current_query[:-1]
                         current_heaps.pop()
+                        focal_item_index = 0
                 else:
                     # normal char
                     try:
@@ -1382,6 +1380,17 @@ class Controller(object): # {{{2
                     # (standard input), and read from that. After this is done and
                     # closed (using the context manager), we must set sys.stdin's
                     # file descriptor to the tty opened for reading.
+                    #
+                    # Alternate approach:
+                    #
+                    #   # if os.isatty(0):
+                    #   #     exit(1)
+                    #   # else:
+                    #   #     # get stdin from tty
+                    #   #     os.dup2(0, 3)
+                    #   #     os.close(0)
+                    #   #     my_stdin = os.fdopen(3, 'r')
+                    #   #     sys.stdin = open('/dev/tty', 'r')
                     with os.fdopen(0, 'r') as src:
                         for item in src.read().split("\n"):
                             item = unicode_str(item)
