@@ -321,7 +321,7 @@ class Display(object): # {{{2
     def render_main(self,
             heap,
             focal_item_index,
-            query,
+            query_str,
             match_type,
             whole_path_matching,
             status_bar_extra_info=None,
@@ -329,7 +329,7 @@ class Display(object): # {{{2
         self.stdscr.erase()
         self.render_content_items(heap, focal_item_index)
         self.render_query(
-                query=query,
+                query_str=query_str,
                 match_type=match_type,
                 whole_path_matching=whole_path_matching,
                 focal_item_index=focal_item_index,
@@ -392,7 +392,7 @@ class Display(object): # {{{2
             self.content_pad.addstr(row, 3, display_name, color | weight)
 
     def render_query(self,
-            query,
+            query_str,
             match_type,
             whole_path_matching,
             focal_item_index,
@@ -426,7 +426,7 @@ class Display(object): # {{{2
                 # status_bar += ("{} of {} entries (".format(focal_item_index, num_entries, truncate_front(status_bar_extra_info, remaining).rjust(remaining)
         status_bar = status_bar.ljust(width-1)[:width-1]
         self.stdscr.addstr(height - self.STATUS_BAR_OFFSET, 0, status_bar, self.status_bar_color)
-        q = prompt + "".join(query)
+        q = prompt + query_str
         self.query_length = len(q)
         self.stdscr.addstr(height - self.QUERY_ROW_OFFSET, 0, q, self.prompt_color)
 
@@ -818,9 +818,10 @@ class Selector(object): # {{{2
         self.multiselection_mode = multiselection_mode
         self.status_bar_extra_info = status_bar_extra_info
 
-    def _new_heap(self, query, cur_heap):
+    def _new_heap(self, query_chars, cur_heap):
         newHeap = []
-        ranker = self.ranker(query=query,
+        ranker = self.ranker(
+                query_str="".join(query_chars),
                 term_separator=self.term_separator,
                 whole_path_matching=self.whole_path_matching,
                 match_type=self.match_type)
@@ -842,18 +843,18 @@ class Selector(object): # {{{2
                 item.is_selected = False
         return newHeap
 
-    def _reset_search(self, current_query, current_heaps):
+    def _reset_search(self, current_query_chars, current_heaps):
         current_heaps = current_heaps[:1]
-        old_query = current_query
-        current_query = []
-        for ch in old_query:
-            current_query += ch
-            current_heaps.append(self._new_heap(current_query, current_heaps[-1]))
+        old_query_chars = current_query_chars
+        current_query_chars = []
+        for ch in old_query_chars:
+            current_query_chars.append(ch)
+            current_heaps.append(self._new_heap(current_query_chars, current_heaps[-1]))
         return current_heaps
 
     def _loop(self, current_heaps, display_items):
         heapq.heapify(current_heaps[0])
-        current_query = []
+        current_query_chars = []
         focal_item_index = 0
         while True:
             # self.output.window.timeout(-1)
@@ -885,7 +886,7 @@ class Selector(object): # {{{2
                 elif keycode.name == "CTRL-W":
                     # <CTRL-W>: Cycle whole-path vs. basename matching
                     self.whole_path_matching = not self.whole_path_matching
-                    current_heaps = self._reset_search(current_query, current_heaps)
+                    current_heaps = self._reset_search(current_query_chars, current_heaps)
                 elif keycode.name == "CTRL-R":
                     # <CTRL-R>: Cycle matching-modes
                     if self.match_type == "literal":
@@ -894,25 +895,25 @@ class Selector(object): # {{{2
                         self.match_type = "literal"
                     else:
                         self.match_type = "fuzzy"
-                    current_heaps = self._reset_search(current_query, current_heaps)
+                    current_heaps = self._reset_search(current_query_chars, current_heaps)
                 # elif keycode.name == "CTRL-F":
                 #     # <CTRL-F>: Fuzzy-matching mode
                 #     self.match_type = "fuzzy"
-                #     current_heaps = self._reset_search(current_query, current_heaps)
+                #     current_heaps = self._reset_search(current_query_chars, current_heaps)
                 # elif keycode.name == "CTRL-E":
                 #     # <CTRL-E>: Regular-expression matching mode
                 #     self.match_type = "regexp"
-                #     current_heaps = self._reset_search(current_query, current_heaps)
+                #     current_heaps = self._reset_search(current_query_chars, current_heaps)
                 # elif keycode.name == "CTRL-L":
                 #     # <CTRL-L>: Literal or raw matching mode
                 #     self.match_type = "literal"
-                #     current_heaps = self._reset_search(current_query, current_heaps)
+                #     current_heaps = self._reset_search(current_query_chars, current_heaps)
                 # # elif keycode.name == "CTRL-W":
                 # #     # <CTRL-W>: Toggle whitespace-separated multi-search
                 # elif keycode.name == "CTRL-T":
                 #     # <CTRL-T>: Toggle whitespace-separated multi-term query
                 #     self.whitespace_separated_multiquery = not self.whitespace_separated_multiquery
-                #     current_heaps = self._reset_search(current_query, current_heaps)
+                #     current_heaps = self._reset_search(current_query_chars, current_heaps)
                 elif keycode.name == "CTRL-I":
                     # <TAB>: toggle in multiselection mode; simply consume character otherwise
                     if self.multiselection_mode:
@@ -941,15 +942,15 @@ class Selector(object): # {{{2
                             focal_item_index=focal_item_index)
                 elif keycode.name == "CTRL-H" or keycode.name == "DEL":
                     # Delete/backspace
-                    if current_query:
-                        current_query.pop()
+                    if current_query_chars:
+                        current_query_chars.pop()
                         current_heaps.pop()
                         focal_item_index = 0 # TODO: adjust this smartly
                 elif not keycode.is_special:
                     # normal char
                     try:
-                        current_query.append(keycode.name)
-                        current_heaps.append(self._new_heap(current_query, current_heaps[-1]))
+                        current_query_chars.append(keycode.name)
+                        current_heaps.append(self._new_heap(current_query_chars, current_heaps[-1]))
                         focal_item_index = 0 # TODO: adjust this smartly
                     except ValueError:
                         pass
@@ -960,7 +961,7 @@ class Selector(object): # {{{2
                     display_items = self.render(
                             heap=current_heaps[-1],
                             focal_item_index=focal_item_index,
-                            query=current_query,
+                            query_chars=current_query_chars,
                             )
 
     def _extract_selected_from_display_items(self, display_items, focal_item_index):
@@ -999,11 +1000,11 @@ class Selector(object): # {{{2
             focal_item_index -= 1
         return [heap[0][1]] if heap else []
 
-    def render(self, heap, focal_item_index, query):
+    def render(self, heap, focal_item_index, query_chars):
         return self.display.render_main(
                 heap=heap,
                 focal_item_index=focal_item_index,
-                query=query,
+                query_str="".join(query_chars),
                 match_type=self.match_type,
                 whole_path_matching=self.whole_path_matching,
                 status_bar_extra_info=self.status_bar_extra_info,
@@ -1020,7 +1021,7 @@ class Selector(object): # {{{2
                 display_items = self.render(
                         heap=heap,
                         focal_item_index=0,
-                        query=[],
+                        query_chars=[],
                         )
                 return self._loop([heap], display_items)
             except Selector.DirectoryUpEventException as e:
@@ -1310,14 +1311,13 @@ class FuzzyRanker(object): # {{{2
     match_and_score = staticmethod(match_and_score)
 
     def __init__(self,
-            query,
+            query_str,
             term_separator=';',
             whole_path_matching=False,
             match_type="fuzzy"):
         self.term_separator = term_separator
         self.whole_path_matching = whole_path_matching
         self.weight_f = lambda f: f.dirname.count(os.sep) ** 0.5
-        query_str = "".join(query).lower()
         if self.term_separator:
             self.query_strings = query_str.split(self.term_separator)
         else:
