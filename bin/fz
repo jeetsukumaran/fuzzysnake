@@ -203,6 +203,7 @@ class Display(object): # {{{2
         self._is_input_blocking = None
         self.start(nrows=nrows)
         self.query_length = 0
+        self.limit_content = None
 
     def start(self, nrows=None):
         cv_height, cv_width = self.content_pad_available_display_dimensions()
@@ -287,13 +288,40 @@ class Display(object): # {{{2
 
     ### Rendering (Content)
 
+    def render_main(self,
+            heap,
+            focal_item_index,
+            query,
+            match_type,
+            whole_path_matching,
+            status_bar_extra_info=None,
+            ):
+        self.render_content_heap(heap, focal_item_index)
+        self.render_query(
+                query=query,
+                match_type=match_type,
+                whole_path_matching=whole_path_matching,
+                status_bar_extra_info=status_bar_extra_info)
+
+    def render_content_heap(self, heap, focal_item_index):
+        self.content_pad.erase()
+        if not heap:
+            return
+        if len(heap) != self.content_pad_dimensions()[0]:
+            self.resize_content_pad(len(heap))
+        hc = list(heap)
+        current_index = 0
+        while hc:
+            score, item = heapq.heappop(hc)
+            self.render_content_item(current_index, item, current_index==focal_item_index)
+            current_index += 1
+
     def render_content_item(self,
-            idx,
+            item_index,
             item,
-            is_current_item,
-            query):
+            is_focal_item):
         height, width = self.content_pad_dimensions()
-        row = height - idx - 1
+        row = height - item_index - 1
         if row < 0:
             raise Display.OutOfWindowBoundsException
         self.content_pad.move(row, 0)
@@ -305,7 +333,7 @@ class Display(object): # {{{2
             color = self.is_selected_color
         else:
             self.content_pad.addstr(" ", self.default_color)
-        if is_current_item:
+        if is_focal_item:
             self.content_pad.addstr("> ", self.default_color)
             color = self.current_row_color
             # to reverse all parts of the line (included matched)
@@ -322,12 +350,13 @@ class Display(object): # {{{2
         else:
             self.content_pad.addstr(display_name, color | weight)
 
-    def render_query(
+    def render_query(self,
             query,
             match_type,
             whole_path_matching,
-            status_bar_extra_info=None):
-        height, width = self.window_size()
+            status_bar_extra_info=None,
+            ):
+        height, width = self.screen_dimensions()
         status_bar_components = []
         if match_type == "fuzzy":
             prompt = "? "
@@ -339,21 +368,19 @@ class Display(object): # {{{2
             prompt = "% "
             status_bar_components.append("[^R] expression: regular")
         if whole_path_matching:
-            status_bar_components.append("[^D] directory match: yes")
+            status_bar_components.append("[^W] match: whole path")
         else:
-            status_bar_components.append("[^D] directory match: no ")
+            status_bar_components.append("[^W] match: basename")
         status_bar = " ".join(status_bar_components)
         if status_bar_extra_info:
             remaining = width - len(status_bar) - 1
             if remaining > 0:
                 status_bar += ("(" + truncate_front(status_bar_extra_info, remaining) + ")").rjust(remaining)
         status_bar = status_bar.ljust(width-1)[:width-1]
-        self.window.move(height - STATUS_BAR_OFFSET, 0)
-        self.window.addstr(status_bar, self.status_bar_color)
+        self.stdscr.addstr(height - self.STATUS_BAR_OFFSET, 0, status_bar, self.status_bar_color)
         q = prompt + query
         self.query_length = len(q)
-        self.window.move(height - QUERY_ROW_OFFSET, 0)
-        self.window.addstr(q, self.prompt_color)
+        self.stdscr.addstr(height - self.QUERY_ROW_OFFSET, 0, q, self.prompt_color)
 
     ### Displaying
 
@@ -368,7 +395,7 @@ class Display(object): # {{{2
     #     self.window.move(height - QUERY_ROW_OFFSET, self.querylen)
     #     self.window.refresh()
 
-    def refresh(self, current_item_index):
+    def refresh(self, focal_item_index):
         screen_height, screen_width = self.screen_dimensions()
         content_height, content_width = self.content_pad_dimensions()
         available_height = self.content_pad_available_display_dimensions()[0]
@@ -377,7 +404,7 @@ class Display(object): # {{{2
             content_top = 0
         else:
             screen_top = 0
-            current_item_row = content_height - current_item_index
+            current_item_row = content_height - focal_item_index
             half_height = int(available_height / 2)
             if current_item_row > (content_height - half_height):
                 content_top = content_height - available_height - 1
@@ -729,7 +756,7 @@ class Selector(object): # {{{2
     def _loop(self, current_heaps):
         heapq.heapify(current_heaps[0])
         current_query = ""
-        selected = 0
+        focal_item_index = 0
         while True:
             # self.output.window.timeout(-1)
             # keycode = self.display.get_keycode(blocking=True, echo=False)
@@ -738,13 +765,13 @@ class Selector(object): # {{{2
             if keycode == "ESC":
                 raise KeyboardInterrupt
             elif keycode == "UP":
-                selected = self._select_previous(selected, len(current_heaps[-1]))
+                focal_item_index = self._select_previous(focal_item_index, len(current_heaps[-1]))
             elif keycode == "DOWN":
-                selected = self._select_next(selected)
+                focal_item_index = self._select_next(focal_item_index)
             elif keycode == "RIGHT":
                 selected_items = self._extract_selected_from_heap(
                         heap=current_heaps[-1],
-                        selected=selected)
+                        focal_item_index=focal_item_index)
                 self.display.clear_query()
                 raise Selector.PageForwardEventException(selected_items)
             elif keycode == "LEFT":
@@ -752,12 +779,12 @@ class Selector(object): # {{{2
                 raise Selector.PageBackwardEventException
             elif keycode == "CTRL-N":
                 # <CTRL-N>: Next
-                selected = self._select_next(selected)
+                focal_item_index = self._select_next(focal_item_index)
             elif keycode == "CTRL-P":
                 # <CTRL-P>: Previous
-                selected = self._select_previous(selected, len(current_heaps[-1]))
-            elif keycode == "CTRL-D":
-                # <CTRL-D>: Cycle full-path vs. basename matching
+                focal_item_index = self._select_previous(focal_item_index, len(current_heaps[-1]))
+            elif keycode == "CTRL-W":
+                # <CTRL-W>: Cycle whole-path vs. basename matching
                 self.whole_path_matching = not self.whole_path_matching
                 current_heaps = self._reset_search(current_query, current_heaps)
             elif keycode == "CTRL-R":
@@ -790,7 +817,7 @@ class Selector(object): # {{{2
             elif keycode == "CTRL-I":
                 # <TAB>: toggle in multiselection mode; simply consume character otherwise
                 if self.multiselection_mode:
-                    current_heaps[-1][selected][1].is_selected = not current_heaps[-1][selected][1].is_selected
+                    current_heaps[-1][focal_item_index][1].is_selected = not current_heaps[-1][focal_item_index][1].is_selected
             elif keycode == "CTRL-U":
                 # <CTRL-U>: Unmark all in multiselection mode; simply consume character otherwise
                 if self.multiselection_mode:
@@ -804,7 +831,7 @@ class Selector(object): # {{{2
             elif keycode == "CTRL-J" or keycode == "CTRL-M":
                 return self._extract_selected_from_heap(
                         heap=current_heaps[-1],
-                        selected=selected)
+                        focal_item_index=focal_item_index)
             elif keycode == "CTRL-H" or keycode == "DEL":
                 # Delete/backspace
                 if current_query != "":
@@ -813,60 +840,73 @@ class Selector(object): # {{{2
             else:
                 # normal char
                 try:
-                    current_query += chr(keycode)
+                    current_query += keycode
                     current_heaps.append(self._new_heap(current_query, current_heaps[-1]))
                 except ValueError:
                     pass
-            self.render(current_query, current_heaps[-1], selected)
+            self.render(
+                    heap=current_heaps[-1],
+                    focal_item_index=focal_item_index,
+                    query=current_query,
+                    )
 
-    def _extract_selected_from_heap(self, heap, selected):
+    def _extract_selected_from_heap(self, heap, focal_item_index):
         if self.multiselection_mode:
-            return self._extract_multi_selected_from_heap(
+            return self._extract_multiselected_from_heap(
                     heap=heap,
-                    selected=selected)
+                    focal_item_index=focal_item_index)
         else:
-            return self._extract_single_selected_from_heap(
+            return self._extract_focal_item_from_heap(
                     heap=heap,
-                    selected=selected)
+                    focal_item_index=focal_item_index)
 
-    def _extract_multi_selected_from_heap(self, heap, selected):
-        selected_items = []
+    def _extract_multiselected_from_heap(self, heap, focal_item_index):
+        focal_item_index_items = []
         index = 0
         while heap:
             score, item = heapq.heappop(heap)
-            if item.is_selected or index == selected:
-                selected_items.append(item)
+            if item.is_focal_item_index or index == focal_item_index:
+                focal_item_index_items.append(item)
             index += 1
-        return selected_items
+        return focal_item_index_items
 
-    def _extract_single_selected_from_heap(self, heap, selected):
-        # return [heap[selected][1]]
-        while selected:
+    def _extract_focal_item_from_heap(self, heap, focal_item_index):
+        # return [heap[focal_item_index][1]]
+        while focal_item_index:
             if not heap:
                 break
             heapq.heappop(heap)
-            selected -= 1
+            focal_item_index -= 1
         return [heap[0][1]] if heap else []
 
-    def render(self, current_query, heap, selected):
-        self.display.clear()
-        self.display.print_query(
-                query=current_query,
+    def render(self, heap, focal_item_index, query):
+        self.display.render_main(
+                heap=heap,
+                focal_item_index=focal_item_index,
+                query="",
                 match_type=self.match_type,
                 whole_path_matching=self.whole_path_matching,
                 status_bar_extra_info=self.status_bar_extra_info,
                 )
-        # for i, (score, item) in enumerate(heap):
-        hc = list(heap)
-        i = 0
-        while hc:
-            score, item = heapq.heappop(hc)
-            try:
-                self.output.print_item(i, item, i==selected, current_query)
-            except CursesPrinter.OutOfWindowBoundsException:
-                break
-            i += 1
-        self.display.refresh()
+
+        # self.display.clear()
+        # self.display.print_query(
+        #         query=current_query,
+        #         match_type=self.match_type,
+        #         whole_path_matching=self.whole_path_matching,
+        #         status_bar_extra_info=self.status_bar_extra_info,
+        #         )
+        # # for i, (score, item) in enumerate(heap):
+        # hc = list(heap)
+        # i = 0
+        # while hc:
+        #     score, item = heapq.heappop(hc)
+        #     try:
+        #         self.output.print_item(i, item, i==selected, current_query)
+        #     except CursesPrinter.OutOfWindowBoundsException:
+        #         break
+        #     i += 1
+        # self.display.refresh()
 
     def run(self,
             items,
@@ -876,7 +916,11 @@ class Selector(object): # {{{2
             try:
                 heap = [(i.score, i) for i in items]
                 heap.sort()
-                self.render("", heap, 0)
+                self.render(
+                        heap=heap,
+                        focal_item_index=0,
+                        query="",
+                        )
                 return self._loop([heap])
             except Selector.PageBackwardEventException as e:
                 if page_backward_event_handler:
