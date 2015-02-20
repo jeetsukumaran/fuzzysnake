@@ -581,24 +581,32 @@ class Display(object): # {{{2
             self.render_content_item(new_focal_item_index, self.content_items[new_focal_item_index], True)
             self.refresh(new_focal_item_index)
 
-    def move_focus_to_next(self, focal_item_index):
+    def move_focus_to_next(self, focal_item_index, count=1):
         # Since we display from the bottom up, moving 'down' or 'next' means
         # moving to a *higher*-scoring result, which requires *decrement* the
         # index to move *up* the list, which is sorted incrementally by score.
-        new_item_index = max(0, focal_item_index - 1)
+        new_item_index = max(0, focal_item_index - count)
         self.update_focal_item(focal_item_index, new_item_index)
         return new_item_index
 
-    def move_focus_to_previous(self, focal_item_index):
+    def move_focus_to_previous(self, focal_item_index, count=1):
         # Since we display from the bottom up, moving 'up' or 'previous' means
         # moving to a *lower*-ring result, which requires *incrementing* the
         # index to move *down* the list, which is sorted incrementally by score.
-        new_item_index = min(len(self.content_items)-1, focal_item_index + 1)
+        new_item_index = min(len(self.content_items)-1, focal_item_index + count)
         # new_item_index = focal_item_index + 1
         if new_item_index < 0:
             new_item_index = 0
         self.update_focal_item(focal_item_index, new_item_index)
         return new_item_index
+
+    def page_down(self, focal_item_index):
+        available_height = self.content_pad_available_display_dimensions()[0]
+        return self.move_focus_to_next(focal_item_index, available_height - 2)
+
+    def page_up(self, focal_item_index):
+        available_height = self.content_pad_available_display_dimensions()[0]
+        return self.move_focus_to_previous(focal_item_index, available_height - 2)
 
     ### Special
 
@@ -857,18 +865,12 @@ class Selector(object): # {{{2
                 raise KeyboardInterrupt
             elif keycode == "UP" or keycode == "CTRL-P":
                 focal_item_index = self.display.move_focus_to_previous(focal_item_index)
-                # display_items = self.render(
-                #         heap=current_heaps[-1],
-                #         focal_item_index=focal_item_index,
-                #         query=current_query,
-                #         )
             elif keycode == "DOWN" or keycode == "CTRL-N":
                 focal_item_index = self.display.move_focus_to_next(focal_item_index)
-                # display_items = self.render(
-                #         heap=current_heaps[-1],
-                #         focal_item_index=focal_item_index,
-                #         query=current_query,
-                #         )
+            elif keycode == "CTRL-B":
+                focal_item_index = self.display.page_up(focal_item_index)
+            elif keycode == "CTRL-F":
+                focal_item_index = self.display.page_down(focal_item_index)
             elif keycode is not None:
                 # following all require full re-rendering
                 if keycode == "RIGHT" or keycode == "CTRL-D":
