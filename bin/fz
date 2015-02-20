@@ -871,14 +871,12 @@ class Selector(object): # {{{2
                 #         )
             elif keycode is not None:
                 # following all require full re-rendering
-                if keycode == "RIGHT":
+                if keycode == "RIGHT" or keycode == "CTRL-D":
                     selected_items = self._extract_selected_from_display_items(
                             display_items=display_items,
                             focal_item_index=focal_item_index)
-                    # self.display.clear_query()
                     raise Selector.PageForwardEventException(selected_items)
-                elif keycode == "LEFT":
-                    # self.display.clear_query()
+                elif keycode == "LEFT" or keycode == "CTRL-U":
                     raise Selector.PageBackwardEventException
                 elif keycode == "CTRL-W":
                     # <CTRL-W>: Cycle whole-path vs. basename matching
