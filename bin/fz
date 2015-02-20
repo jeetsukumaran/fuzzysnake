@@ -205,8 +205,7 @@ class Display(object): # {{{2
         self._is_input_blocking = None
         self.start(nrows=nrows)
         self.query_length = 0
-        self.limit_content = None
-        self.num_content_items = 0
+        self.content_limit = 1000
         self.content_heap = None
 
     def start(self, nrows=None):
@@ -307,22 +306,28 @@ class Display(object): # {{{2
                 query=query,
                 match_type=match_type,
                 whole_path_matching=whole_path_matching,
+                focal_item_index=focal_item_index,
                 status_bar_extra_info=status_bar_extra_info)
         self.refresh(focal_item_index=focal_item_index)
 
     def render_content_heap(self, heap, focal_item_index):
-        self.num_content_items = len(heap)
         self.content_pad.erase()
-        if not self.num_content_items:
+        if self.content_limit:
+            self.content_heap = heap[:self.content_limit]
+        else:
+            self.content_heap = heap
+        if not heap:
             return
-        if self.num_content_items > self.content_pad_dimensions()[0]:
-            self.resize_content_pad(len(heap))
-        self.content_heap = heap
+        if len(self.content_heap) > self.content_pad_dimensions()[0]:
+            self.resize_content_pad(len(self.content_heap))
         hc = list(self.content_heap)
         current_index = 0
         while hc:
             score, item = heapq.heappop(hc)
-            self.render_content_item(current_index, item, current_index==focal_item_index)
+            try:
+                self.render_content_item(current_index, item, current_index==focal_item_index)
+            except Display.OutOfWindowBoundsException:
+                break
             current_index += 1
 
     def render_content_item(self,
@@ -363,6 +368,7 @@ class Display(object): # {{{2
             query,
             match_type,
             whole_path_matching,
+            focal_item_index,
             status_bar_extra_info=None,
             ):
         height, width = self.screen_dimensions()
@@ -381,10 +387,16 @@ class Display(object): # {{{2
         else:
             status_bar_components.append("[^W] match: basename")
         status_bar = " ".join(status_bar_components)
+        if status_bar_extra_info is None:
+            status_bar_extra_info = ""
         if status_bar_extra_info:
             remaining = width - len(status_bar) - 1
             if remaining > 0:
-                status_bar += ("(" + truncate_front(status_bar_extra_info, remaining) + ")").rjust(remaining)
+                status_bar += (("({})".format(truncate_front(status_bar_extra_info, remaining))).rjust(remaining))
+                # num_entries = len(self.content_heap)
+                # if num_entries:
+                #     focal_item_index += 1
+                # status_bar += ("{} of {} entries (".format(focal_item_index, num_entries, truncate_front(status_bar_extra_info, remaining).rjust(remaining)
         status_bar = status_bar.ljust(width-1)[:width-1]
         self.stdscr.addstr(height - self.STATUS_BAR_OFFSET, 0, status_bar, self.status_bar_color)
         q = prompt + query
@@ -405,43 +417,47 @@ class Display(object): # {{{2
     #     self.window.refresh()
 
     def refresh(self, focal_item_index):
-        content_height, content_width = self.content_pad_dimensions()
-        screen_height, screen_width = self.screen_dimensions()
-        self.stdscr.noutrefresh()
-        if not self.num_content_items:
-            self.content_pad.noutrefresh(
-                    0,
-                    0,
-                    0,
-                    0,
-                    screen_height-3,
-                    screen_width,
-                    )
-        else:
-            available_height = self.content_pad_available_display_dimensions()[0]
-            if self.num_content_items < available_height:
-                screen_top = screen_height - self.num_content_items - 2
-                content_top = content_height - self.num_content_items
+        try:
+            content_height, content_width = self.content_pad_dimensions()
+            screen_height, screen_width = self.screen_dimensions()
+            self.stdscr.noutrefresh()
+            num_content_items = len(self.content_heap)
+            if not num_content_items:
+                self.content_pad.noutrefresh(
+                        0,
+                        0,
+                        0,
+                        0,
+                        screen_height-3,
+                        screen_width,
+                        )
             else:
-                screen_top = 0
-                # current_item_row = self.num_content_items - focal_item_index
-                current_item_row = content_height - focal_item_index
-                half_height = int(available_height / 2)
-                if current_item_row > (self.num_content_items - half_height):
-                    content_top = self.num_content_items - available_height - 1
-                elif current_item_row < half_height:
-                    content_top = 0
+                available_height = self.content_pad_available_display_dimensions()[0]
+                if num_content_items < available_height:
+                    screen_top = screen_height - num_content_items - 2
+                    content_top = content_height - num_content_items
                 else:
-                    content_top = current_item_row - half_height - 1
-            self.content_pad.noutrefresh(
-                    content_top,
-                    0,
-                    screen_top,
-                    0,
-                    screen_height-3,
-                    screen_width,
-                    )
-        curses.doupdate()
+                    screen_top = 0
+                    # current_item_row = num_content_items - focal_item_index
+                    current_item_row = content_height - focal_item_index
+                    half_height = int(available_height / 2)
+                    if current_item_row > (num_content_items - half_height):
+                        content_top = num_content_items - available_height - 1
+                    elif current_item_row < half_height:
+                        content_top = 0
+                    else:
+                        content_top = current_item_row - half_height - 1
+                self.content_pad.noutrefresh(
+                        content_top,
+                        0,
+                        screen_top,
+                        0,
+                        screen_height-3,
+                        screen_width,
+                        )
+            curses.doupdate()
+        except Exception as e:
+            pass
 
     ### Input
 
@@ -520,8 +536,14 @@ class Display(object): # {{{2
 
     def update_focal_item(self, current_focal_item_index, new_focal_item_index):
         if new_focal_item_index != current_focal_item_index:
-            self.render_content_item(current_focal_item_index, self.content_heap[current_focal_item_index][1], False)
-            self.render_content_item(new_focal_item_index, self.content_heap[new_focal_item_index][1], True)
+            try:
+                self.render_content_item(current_focal_item_index, self.content_heap[current_focal_item_index][1], False)
+            except Display.OutOfWindowBoundsException:
+                pass
+            try:
+                self.render_content_item(new_focal_item_index, self.content_heap[new_focal_item_index][1], True)
+            except Display.OutOfWindowBoundsException:
+                pass
             self.refresh(new_focal_item_index)
 
     def move_focus_to_next(self, focal_item_index):
@@ -536,7 +558,7 @@ class Display(object): # {{{2
         # Since we display from the bottom up, moving 'up' or 'previous' means
         # moving to a *lower*-ring result, which requires *incrementing* the
         # index to move *down* the list, which is sorted incrementally by score.
-        new_item_index = min(self.num_content_items-1, focal_item_index + 1)
+        new_item_index = min(len(self.content_heap)-1, focal_item_index + 1)
         self.update_focal_item(focal_item_index, new_item_index)
         if new_item_index < 0:
             new_item_index = 0
