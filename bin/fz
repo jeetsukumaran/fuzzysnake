@@ -859,23 +859,23 @@ class Selector(object): # {{{2
 
             if keycode == "ESC":
                 raise KeyboardInterrupt
+            elif keycode == "UP" or keycode == "CTRL-P":
+                focal_item_index = self.display.move_focus_to_previous(focal_item_index)
+                # self.render(
+                #         heap=current_heaps[-1],
+                #         focal_item_index=focal_item_index,
+                #         query=current_query,
+                #         )
+            elif keycode == "DOWN" or keycode == "CTRL-N":
+                focal_item_index = self.display.move_focus_to_next(focal_item_index)
+                # self.render(
+                #         heap=current_heaps[-1],
+                #         focal_item_index=focal_item_index,
+                #         query=current_query,
+                #         )
             elif keycode is not None:
                 # following all require full re-rendering
-                if keycode == "UP" or keycode == "CTRL-P":
-                    focal_item_index = self.display.move_focus_to_previous(focal_item_index)
-                    # self.render(
-                    #         heap=current_heaps[-1],
-                    #         focal_item_index=focal_item_index,
-                    #         query=current_query,
-                    #         )
-                elif keycode == "DOWN" or keycode == "CTRL-N":
-                    focal_item_index = self.display.move_focus_to_next(focal_item_index)
-                    # self.render(
-                    #         heap=current_heaps[-1],
-                    #         focal_item_index=focal_item_index,
-                    #         query=current_query,
-                    #         )
-                elif keycode == "RIGHT":
+                if keycode == "RIGHT":
                     selected_items = self._extract_selected_from_heap(
                             heap=current_heaps[-1],
                             focal_item_index=focal_item_index)
@@ -943,6 +943,7 @@ class Selector(object): # {{{2
                     try:
                         current_query += keycode
                         current_heaps.append(self._new_heap(current_query, current_heaps[-1]))
+                        focal_item_index = 0
                     except ValueError:
                         pass
                 self.render(
