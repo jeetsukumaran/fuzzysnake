@@ -1046,7 +1046,7 @@ class DirectorySource(object): # {{{2
             self.find_parent_gis(start_dir)
         if results is None:
             results = []
-        progress = display.get_progress_ticker()
+        progress = self.display.get_progress_ticker()
         total_items_scanned = 0
         for search_idx, (dirname, dirs, filenames) in enumerate(walk(start_dir)):
             if progress.check_for_cancel():
@@ -1324,22 +1324,23 @@ class Controller(object): # {{{2
                     # A little inefficient, but avoids cross-application
                     # of .gitignore etc. filters
                     ds = DirectorySource(
-                            display=display,
-                            target_filename_patterns=args.target_filename_pattern,
+                            display=self.display,
+                            target_filename_patterns=self.args.target_filename_pattern,
                             ignore_directories=ignore_directories,
                             ignore_files=ignore_files,
                             respect_gitignores=respect_gitignores,
-                            include_hidden=args.include_hidden,
-                            dirs_to_exclude=args.dirs_to_exclude,
-                            files_to_exclude=args.files_to_exclude,
-                            filter_for_glob_names=args.filter_for_glob_names,
-                            max_recursion_depth=args.max_recursion_depth)
+                            include_hidden=self.args.include_hidden,
+                            dirs_to_exclude=self.args.dirs_to_exclude,
+                            files_to_exclude=self.args.files_to_exclude,
+                            filter_for_glob_names=self.args.filter_for_glob_names,
+                            max_recursion_depth=self.args.max_recursion_depth)
                     path = os.path.expandvars(os.path.expanduser(path))
                     ds.fetch(start_dir=path,
                             results=items,
-                            suppress_progress_feedback=args.no_progress_window)
+                            suppress_progress_feedback=self.args.no_progress_window)
         except KeyboardInterrupt:
-            sys.exit(interrupt_exit_value)
+            if exit_on_interrupt:
+                self.exit(interrupt_exit_value)
         return items
 
     def page_backward_event_handler(self, event_exception_obj):
@@ -1402,7 +1403,7 @@ class Controller(object): # {{{2
                         sys.stderr.write(filepath)
                         sys.stderr.write("\n")
                 if not as_subprocess:
-                    sys.exit(0)
+                    self.exit(0)
             else:
                 out = open(os.path.expandvars(os.path.expanduser(args.action_target)), "w")
                 with out:
@@ -1410,18 +1411,22 @@ class Controller(object): # {{{2
                         out.write(filepath)
                         out.write("\n")
                 if not as_subprocess:
-                    sys.exit(0)
+                    self.exit(0)
         else:
             error_msg = "Unrecognized action: '{}'".format(args.action_type)
             if not as_subprocess:
-                sys.exit(error_msg)
+                self.exit(error_msg)
             else:
-                curses_error(error_msg)
+                self.display.error(error_msg)
+
+    def exit(self, exit_arg):
+        self.display.stop()
+        sys.exit(exit_arg)
 
     def run(self):
         selected = self.run_query()
         if not selected:
-            sys.exit(1) # raise error to let parent shell know nothing was selected
+            self.exit(1) # raise error to let parent shell know nothing was selected
         filepaths = [entry.filepath for entry in selected]
         self.apply_action(filepaths, as_subprocess=False)
 
@@ -1431,6 +1436,7 @@ class Controller(object): # {{{2
         if out is None:
             out = sys.stdout
         items = self.scan_search_paths()
+        self.display.stop()
         for item in items:
             item_str = "{}\n".format(item.filepath)
             out.write(item_str)
@@ -1440,11 +1446,10 @@ class Controller(object): # {{{2
     def run_query(self):
         items = self.scan_search_paths()
         if not items:
-            sys.stderr.write("No valid files or directories found.\n")
-            sys.exit(0)
+            self.exit("No valid files or directories found.")
         ranker = FuzzyRanker
         selector = Selector(
-                display=display,
+                display=self.display,
                 ranker=ranker,
                 term_separator=self.args.term_separator,
                 whole_path_matching=self.args.whole_path_match,
@@ -1459,7 +1464,7 @@ class Controller(object): # {{{2
                     page_forward_event_handler=self.page_forward_event_handler,
                     )
         except KeyboardInterrupt:
-            sys.exit(1) # error so no process will execute anything on blank output
+            self.exit(1) # error so no process will execute anything on blank output
         return selected
 
 # }}}2
@@ -2117,7 +2122,7 @@ class SetCustomCommandAction(argparse.Action): # {{{2
 
 # }}}1
 
-if __name__ == '__main__': # {{{1
+def main(): # {{{1
     args = parse_cli_args()
     with Subscreen() as stdscr:
         display = Display(stdscr=stdscr)
@@ -2126,5 +2131,9 @@ if __name__ == '__main__': # {{{1
             controller.print_list()
         else:
             controller.run()
+# }}}1
+
+if __name__ == '__main__': # {{{1
+    main()
 # }}}1
 
