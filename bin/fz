@@ -635,7 +635,6 @@ def execute_command(cmd,
             # process is replaced by it.
             os.execvp(cmd[0], cmd)
         else:
-            curses_end()
             p = subprocess.Popen(cmd)
             p.communicate()
     except OSError:
@@ -1387,6 +1386,8 @@ class Controller(object): # {{{2
         return status_bar_extra_info
 
     def apply_action(self, filepaths, as_subprocess=False):
+        if as_subprocess:
+            self.display.stop()
         if args.action_type == "edit":
             execute_command(self.editor_path, filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
         elif args.action_type == "open":
@@ -1395,8 +1396,6 @@ class Controller(object): # {{{2
             execute_command(args.action_target, filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
         elif args.action_type == "print":
             if not hasattr(args, "action_target") or args.action_target == "-":
-                if as_subprocess:
-                    curses_end()
                 for filepath in filepaths:
                     sys.stdout.write(filepath)
                     sys.stdout.write("\n")
@@ -1425,7 +1424,6 @@ class Controller(object): # {{{2
         if not selected:
             sys.exit(1) # raise error to let parent shell know nothing was selected
         filepaths = [entry.filepath for entry in selected]
-        self.display.stop()
         self.apply_action(filepaths, as_subprocess=False)
 
     def print_list(self,
