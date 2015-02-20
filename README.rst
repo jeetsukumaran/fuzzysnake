@@ -105,7 +105,7 @@ path in the type-specific system default application using the '`o`'/'`--open`'
 option. These are discussed in more detail below.
 
 If you decide that you do *not* want to follow through with any actions at all,
-you can hit '`<ESC>`' or '`<CTRL-C>`' or '`<CTRL-G>`' at any time to cancel
+you can hit '`<ESC>`' or '`<CTRL-C>`' at any time to cancel
 `FuzzySnake` and return to the shell.
 
 Setting the Default Editor
@@ -139,10 +139,10 @@ using the '`-e`' or '`--regexp`' flag::
 
 In the middle of the search, while reviewing the list of candidates, you can
 cycle through the different match modes by typing '`<CTRL-R`>' (similar to
-toggling between fixed string and regular expression matching in `CtrlP
-<https://github.com/kien/ctrlp.vim>`_ for `Vim <http://www.vim.org>`_). The
-prompt will change to indicate the current match mode: '`?`' (fuzzy), '`=`'
-(literal), or '`%`' (regular expression).
+'`<CTRL-R>`' in `CtrlP <https://github.com/kien/ctrlp.vim>`_ for `Vim
+<http://www.vim.org>`_ for toggling between fixed string and regular
+expression matching). The prompt will change to indicate the current match
+mode: '`?`' (fuzzy), '`=`' (literal), or '`%`' (regular expression).
 
 .. You can set a particular matching mode directly by:
 
@@ -162,9 +162,10 @@ components of the parent directory as well as the basename, then invoke
     $ fz -w
 
 When reviewing or filtering the list, you can switch back-and-forth between
-matching the whole path or just the basename by using '<CTRL-D>' (similar to
-toggling between full directory and filename path vs. filename only matching in
-`CtrlP <https://github.com/kien/ctrlp.vim>`_ for `Vim <http://www.vim.org>`_).
+matching the whole path or just the basename by using '`<CTRL-W>`' (similar to
+'`<CTRL-D>`' in `CtrlP <https://github.com/kien/ctrlp.vim>`_ for `Vim
+<http://www.vim.org>`_ toggling between full directory and filename path vs.
+filename only matching).
 
 Restricting Searches by File Type
 ---------------------------------
@@ -341,10 +342,11 @@ output ('`--standard-output`'), execute an arbitrary command on the entries
 ('`-c`'/'`--execute-command`') and so on. Note that typing `<ENTER>` on an
 unmarked entry automatically adds that entry to the list of selected entries,
 and the specified action will be invoked on it as well as the other selected
-entries. If you type `<CTRL-U>` at any time, all marked items will be unmarked,
-while, conversely, `<CTRL-A>` will mark all the entries. If you want to force
-`FuzzySnake` to only accept a single selection, you can invoke `FuzzySnake` in
-single-selection mode by using the '`-s`' or '`--single-selection`' flag::
+entries. If you type `<CTRL-X>` at any time, all marked items will be cancelled
+(unmarked), while, conversely, `<CTRL-A>` will mark all the entries. If you
+want to force `FuzzySnake` to only accept a single selection, you can invoke
+`FuzzySnake` in single-selection mode by using the '`-s`' or
+'`--single-selection`' flag::
 
     $ fz -s
 
