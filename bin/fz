@@ -64,7 +64,7 @@ import itertools
 # Program Metadata {{{1
 # ==============================================================================
 __prog__ = os.path.basename(__file__)
-__version__ = "4.0.0"
+__version__ = "3.0.0"
 __description__ = __doc__
 __author__ = 'Jeet Sukumaran'
 __copyright__ = 'Copyright (C) 2015 Jeet Sukumaran.'
