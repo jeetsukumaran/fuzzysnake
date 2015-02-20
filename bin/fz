@@ -574,8 +574,8 @@ class Display(object): # {{{2
         # Since we display from the bottom up, moving 'up' or 'previous' means
         # moving to a *lower*-ring result, which requires *incrementing* the
         # index to move *down* the list, which is sorted incrementally by score.
-        # new_item_index = min(len(self.content_heap)-1, focal_item_index + 1)
-        new_item_index = focal_item_index + 1
+        new_item_index = min(len(self.content_heap)-1, focal_item_index + 1)
+        # new_item_index = focal_item_index + 1
         if new_item_index < 0:
             new_item_index = 0
         # self.update_focal_item(focal_item_index, new_item_index)
