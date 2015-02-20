@@ -276,6 +276,7 @@ class Display(object): # {{{2
     def error(self, message, erase=True):
         if erase:
             self.content_pad.erase()
+        height, width = self.screen_dimensions()
         self.write_status_bar(message, self.error_color, refresh=True)
         self.stdscr.move(height - self.STATUS_BAR_OFFSET, min(len(message), self.screen_dimensions()[1]-1))
         self.pause_for_keypress()
@@ -312,18 +313,16 @@ class Display(object): # {{{2
 
     def render_content_heap(self, heap, focal_item_index):
         self.content_pad.erase()
-        if self.content_limit:
-            self.content_heap = heap[:self.content_limit]
-        else:
-            self.content_heap = heap
+        self.content_heap = []
         if not heap:
             return
-        if len(self.content_heap) > self.content_pad_dimensions()[0]:
-            self.resize_content_pad(len(self.content_heap))
-        hc = list(self.content_heap)
+        if len(heap) > self.content_pad_dimensions()[0]:
+            self.resize_content_pad(len(heap))
+        hc = list(heap)
         current_index = 0
         while hc:
             score, item = heapq.heappop(hc)
+            self.content_heap.append(item)
             try:
                 self.render_content_item(current_index, item, current_index==focal_item_index)
             except Display.OutOfWindowBoundsException:
@@ -548,26 +547,26 @@ class Display(object): # {{{2
     #   (b) cache items in list somewhere
     #   (c) rebuild entire screen
     #   ... for now, opting for last
-    # def update_focal_item(self, current_focal_item_index, new_focal_item_index):
-    #     if new_focal_item_index != current_focal_item_index:
-    #         # try:
-    #         #     self.render_content_item(current_focal_item_index, self.content_heap[current_focal_item_index][1], False)
-    #         # except Display.OutOfWindowBoundsException:
-    #         #     pass
-    #         # try:
-    #         #     self.render_content_item(new_focal_item_index, self.content_heap[new_focal_item_index][1], True)
-    #         # except Display.OutOfWindowBoundsException:
-    #         #     pass
-    #         self.render_content_item(current_focal_item_index, self.content_heap[current_focal_item_index][1], False)
-    #         self.render_content_item(new_focal_item_index, self.content_heap[new_focal_item_index][1], True)
-    #         self.refresh(new_focal_item_index)
+    def update_focal_item(self, current_focal_item_index, new_focal_item_index):
+        if new_focal_item_index != current_focal_item_index:
+            # try:
+            #     self.render_content_item(current_focal_item_index, self.content_heap[current_focal_item_index][1], False)
+            # except Display.OutOfWindowBoundsException:
+            #     pass
+            # try:
+            #     self.render_content_item(new_focal_item_index, self.content_heap[new_focal_item_index][1], True)
+            # except Display.OutOfWindowBoundsException:
+            #     pass
+            self.render_content_item(current_focal_item_index, self.content_heap[current_focal_item_index], False)
+            self.render_content_item(new_focal_item_index, self.content_heap[new_focal_item_index], True)
+            self.refresh(new_focal_item_index)
 
     def move_focus_to_next(self, focal_item_index):
         # Since we display from the bottom up, moving 'down' or 'next' means
         # moving to a *higher*-scoring result, which requires *decrement* the
         # index to move *up* the list, which is sorted incrementally by score.
         new_item_index = max(0, focal_item_index - 1)
-        # self.update_focal_item(focal_item_index, new_item_index)
+        self.update_focal_item(focal_item_index, new_item_index)
         return new_item_index
 
     def move_focus_to_previous(self, focal_item_index):
@@ -578,7 +577,7 @@ class Display(object): # {{{2
         # new_item_index = focal_item_index + 1
         if new_item_index < 0:
             new_item_index = 0
-        # self.update_focal_item(focal_item_index, new_item_index)
+        self.update_focal_item(focal_item_index, new_item_index)
         return new_item_index
 
     ### Special
@@ -840,18 +839,18 @@ class Selector(object): # {{{2
                 # following all require full re-rendering
                 if keycode == "UP" or keycode == "CTRL-P":
                     focal_item_index = self.display.move_focus_to_previous(focal_item_index)
-                    self.render(
-                            heap=current_heaps[-1],
-                            focal_item_index=focal_item_index,
-                            query=current_query,
-                            )
+                    # self.render(
+                    #         heap=current_heaps[-1],
+                    #         focal_item_index=focal_item_index,
+                    #         query=current_query,
+                    #         )
                 elif keycode == "DOWN" or keycode == "CTRL-N":
                     focal_item_index = self.display.move_focus_to_next(focal_item_index)
-                    self.render(
-                            heap=current_heaps[-1],
-                            focal_item_index=focal_item_index,
-                            query=current_query,
-                            )
+                    # self.render(
+                    #         heap=current_heaps[-1],
+                    #         focal_item_index=focal_item_index,
+                    #         query=current_query,
+                    #         )
                 elif keycode == "RIGHT":
                     selected_items = self._extract_selected_from_heap(
                             heap=current_heaps[-1],
@@ -1417,7 +1416,7 @@ class Controller(object): # {{{2
                     pass
             new_dirs = sorted(set(new_dirs))
             if not new_dirs:
-                curses_error("No valid sub-directories found in new search path(s)")
+                self.display.error("No valid sub-directories found in new search path(s)")
             else:
                 self.args.search_paths = new_dirs
             items = self.scan_search_paths()
@@ -1425,7 +1424,7 @@ class Controller(object): # {{{2
         else:
             filepaths = [entry.filepath for entry in event_exception_obj.selected_items]
             if not filepaths:
-                curses_error("No valid files found or selected")
+                self.display.error("No valid files found or selected")
             else:
                 self.apply_action(filepaths, as_subprocess=True)
                 # execute_command(self.editor_path, filepaths, verbose=not self.args.quiet, as_subprocess=True)
