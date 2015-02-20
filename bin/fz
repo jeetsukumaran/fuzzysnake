@@ -337,32 +337,33 @@ class Display(object): # {{{2
         row = height - item_index - 1
         if row < 0:
             raise Display.OutOfWindowBoundsException
-        self.content_pad.move(row, 0)
-        self.content_pad.clrtoeol()
-        display_name = truncate_middle(item.display_name, width-3) # account for leader
+        # self.content_pad.move(row, 0)
+        # self.content_pad.clrtoeol()
+        # -4: account for leader, and avoid writing at last position
+        display_name = truncate_middle(item.display_name, width-4).ljust(width-4)
         weight = curses.A_NORMAL
         color = self.default_color
         if item.is_selected:
-            self.content_pad.addstr("#", self.is_selected_color | curses.A_BOLD)
+            self.content_pad.addstr(row, 0, "#", self.is_selected_color | curses.A_BOLD)
             color = self.is_selected_color
         else:
-            self.content_pad.addstr(" ", self.default_color)
+            self.content_pad.addstr(row, 0, " ", self.default_color)
         if is_focal_item:
-            self.content_pad.addstr("> ", self.default_color)
+            self.content_pad.addstr(row, 1, "> ", self.default_color)
             color = self.current_row_color
             # to reverse all parts of the line (included matched)
             weight = curses.A_REVERSE
         else:
-            self.content_pad.addstr("  ", self.default_color)
+            self.content_pad.addstr(row, 1, "  ", self.default_color)
         if item.score > 0:
             left = display_name[:item.match_start]
             main = display_name[item.match_start:item.match_end]
             right = display_name[item.match_end:]
-            self.content_pad.addstr(left, color | weight)
-            self.content_pad.addstr(main, self.match_color | weight)
-            self.content_pad.addstr(right, color | weight)
+            self.content_pad.addstr(row, 3, left, color | weight)
+            self.content_pad.addstr(row, 3 + len(left), main, self.match_color | weight)
+            self.content_pad.addstr(row, 3 + len(left) + len(main), right, color | weight)
         else:
-            self.content_pad.addstr(display_name, color | weight)
+            self.content_pad.addstr(row, 3, display_name, color | weight)
 
     def render_query(self,
             query,
