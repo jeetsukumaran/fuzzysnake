@@ -426,7 +426,7 @@ class Display(object): # {{{2
                 # status_bar += ("{} of {} entries (".format(focal_item_index, num_entries, truncate_front(status_bar_extra_info, remaining).rjust(remaining)
         status_bar = status_bar.ljust(width-1)[:width-1]
         self.stdscr.addstr(height - self.STATUS_BAR_OFFSET, 0, status_bar, self.status_bar_color)
-        q = prompt + query
+        q = prompt + "".join(query)
         self.query_length = len(q)
         self.stdscr.addstr(height - self.QUERY_ROW_OFFSET, 0, q, self.prompt_color)
 
@@ -437,11 +437,6 @@ class Display(object): # {{{2
 
     def clear_content(self):
         self.content_pad.erase()
-
-    # def flush(self):
-    #     height, width = self.window_size()
-    #     self.window.move(height - QUERY_ROW_OFFSET, self.querylen)
-    #     self.window.refresh()
 
     def refresh(self, focal_item_index):
         try:
@@ -850,7 +845,7 @@ class Selector(object): # {{{2
     def _reset_search(self, current_query, current_heaps):
         current_heaps = current_heaps[:1]
         old_query = current_query
-        current_query = ""
+        current_query = []
         for ch in old_query:
             current_query += ch
             current_heaps.append(self._new_heap(current_query, current_heaps[-1]))
@@ -858,7 +853,7 @@ class Selector(object): # {{{2
 
     def _loop(self, current_heaps, display_items):
         heapq.heapify(current_heaps[0])
-        current_query = ""
+        current_query = []
         focal_item_index = 0
         while True:
             # self.output.window.timeout(-1)
@@ -946,16 +941,16 @@ class Selector(object): # {{{2
                             focal_item_index=focal_item_index)
                 elif keycode.name == "CTRL-H" or keycode.name == "DEL":
                     # Delete/backspace
-                    if current_query != "":
-                        current_query = current_query[:-1]
+                    if current_query:
+                        current_query.pop()
                         current_heaps.pop()
-                        focal_item_index = 0
+                        focal_item_index = 0 # TODO: adjust this smartly
                 elif not keycode.is_special:
                     # normal char
                     try:
-                        current_query += keycode.name
+                        current_query.append(keycode.name)
                         current_heaps.append(self._new_heap(current_query, current_heaps[-1]))
-                        focal_item_index = 0
+                        focal_item_index = 0 # TODO: adjust this smartly
                     except ValueError:
                         pass
                 else:
@@ -1014,25 +1009,6 @@ class Selector(object): # {{{2
                 status_bar_extra_info=self.status_bar_extra_info,
                 )
 
-        # self.display.clear()
-        # self.display.print_query(
-        #         query=current_query,
-        #         match_type=self.match_type,
-        #         whole_path_matching=self.whole_path_matching,
-        #         status_bar_extra_info=self.status_bar_extra_info,
-        #         )
-        # # for i, (score, item) in enumerate(heap):
-        # hc = list(heap)
-        # i = 0
-        # while hc:
-        #     score, item = heapq.heappop(hc)
-        #     try:
-        #         self.output.print_item(i, item, i==selected, current_query)
-        #     except CursesPrinter.OutOfWindowBoundsException:
-        #         break
-        #     i += 1
-        # self.display.refresh()
-
     def run(self,
             items,
             directory_up_event_handler=None,
@@ -1044,7 +1020,7 @@ class Selector(object): # {{{2
                 display_items = self.render(
                         heap=heap,
                         focal_item_index=0,
-                        query="",
+                        query=[],
                         )
                 return self._loop([heap], display_items)
             except Selector.DirectoryUpEventException as e:
@@ -1307,17 +1283,17 @@ class FuzzyRanker(object): # {{{2
     class IncompleteRegularExpressionPatternException(Exception):
         pass
 
-    def match_and_score(query, s, match_type):
+    def match_and_score(query_str, target_str, match_type):
         if match_type == "fuzzy":
-            pattern = '.*?'.join(map(re.escape, list(query)))
+            pattern = '.*?'.join(map(re.escape, list(query_str)))
         elif match_type == "literal":
-            pattern = ''.join(map(re.escape, list(query)))
+            pattern = ''.join(map(re.escape, list(query_str)))
         elif match_type == "regexp":
-            pattern = query
+            pattern = query_str
         else:
             raise TypeError("Unrecognized pattern type: '{}'".format(match_type))
         try:
-            match = re.search(pattern, s, re.I)
+            match = re.search(pattern, target_str, re.I)
         except re.error:
             if match_type == "regexp":
                 raise FuzzyRanker.IncompleteRegularExpressionPatternException()
@@ -1327,7 +1303,7 @@ class FuzzyRanker(object): # {{{2
             # result = 100.0 / ((1+match.start()) * (match.end()-match.start()+1))
             result = ((1 + match.start()) * (match.end() - match.start() + 1)) / 1000.0
             # if match_type == "fuzzy":
-            #     result = (1+levenshtein(s, query))
+            #     result = (1+levenshtein(target_str, query_str))
             # else:
             #     result = ((1 + match.start()) * (match.end() - match.start() + 1)) / 1000.0
         return match, result
@@ -1341,11 +1317,11 @@ class FuzzyRanker(object): # {{{2
         self.term_separator = term_separator
         self.whole_path_matching = whole_path_matching
         self.weight_f = lambda f: f.dirname.count(os.sep) ** 0.5
-        self.qs = query.lower()
+        query_str = "".join(query).lower()
         if self.term_separator:
-            self.qs = self.qs.split(self.term_separator)
+            self.query_strings = query_str.split(self.term_separator)
         else:
-            self.qs = [self.qs]
+            self.query_strings = [query_str]
         self.match_type = match_type
 
     def rank(self, item):
@@ -1357,7 +1333,7 @@ class FuzzyRanker(object): # {{{2
         agg_score = 0.0
         match_start = len(part)
         match_end = -1
-        for q in self.qs:
+        for q in self.query_strings:
             match, score = self.match_and_score(q, part, self.match_type)
             if score is None or score == 0:
                 # return None, None, None
