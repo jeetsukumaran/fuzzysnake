@@ -1385,10 +1385,10 @@ class Controller(object): # {{{2
 
     ### Life-cycle
 
-    def __init__(self, display, subscreen, args):
-        self.display = display
+    def __init__(self, subscreen, args):
         self.subscreen = subscreen
         self.args = args
+        self.display = Display(stdscr=self.subscreen.stdscr)
         self.editor_path = os.environ.get("FUZZYSNAKE_EDITOR", os.environ.get("EDITOR", "vi"))
 
     ### Data Accession
@@ -2237,8 +2237,7 @@ class SetCustomCommandAction(argparse.Action): # {{{2
 def main(): # {{{1
     args = parse_cli_args()
     with Subscreen() as subscreen:
-        display = Display(stdscr=subscreen.stdscr)
-        controller = Controller(display=display, subscreen=subscreen, args=args)
+        controller = Controller(subscreen=subscreen, args=args)
         if args.action_type == "list-and-exit":
             controller.print_list()
         else:
