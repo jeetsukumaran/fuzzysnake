@@ -559,8 +559,8 @@ class Display(object): # {{{2
         return ch
 
     def check_for_cancel(self):
-        keych = self.get_keycode(blocking=False, echo=False)
-        if keych is not None and keycode.name in self.CANCEL_KEYCODES_NAMES:
+        keycode = self.get_keycode(blocking=False, echo=False)
+        if keycode is not None and keycode.name in self.CANCEL_KEYCODES_NAMES:
             return True
         return False
 
