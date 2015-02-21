@@ -171,14 +171,23 @@ class Subscreen(object): # {{{2
 
 # }}}2
 
-class Display(object): # {{{2
+class VisualInterface(object): # {{{2
 
-    # class variables {{{3
-    FIRST_ITEM_ROW_OFFSET = 3
-    STATUS_BAR_OFFSET     = 2
-    QUERY_ROW_OFFSET      = 1
-    QUERY_WINDOW_HEIGHT    = 2
-    # }}}3
+    @staticmethod
+    def get_console_dimensions():
+        env = os.environ
+        def ioctl_GWINSZ(fd):
+            try:
+                cr = struct.unpack('hh', fcntl.ioctl(fd, termios.TIOCGWINSZ, '1234'))
+            except:
+                return
+            return cr
+        return ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2) or (25, 80)
+
+    @staticmethod
+    def stop():
+        curses.echo()
+        curses.endwin()
 
     # key codes {{{3
     class KeyCode(object):
@@ -204,44 +213,21 @@ class Display(object): # {{{2
     CANCEL_KEYCODES_NAMES = set(["ESC", "FS", "CTRL-C"])
     # }}}3
 
-    class OutOfWindowBoundsException(Exception):
-        pass
-
-    @staticmethod
-    def get_console_dimensions():
-        env = os.environ
-        def ioctl_GWINSZ(fd):
-            try:
-                cr = struct.unpack('hh', fcntl.ioctl(fd, termios.TIOCGWINSZ, '1234'))
-            except:
-                return
-            return cr
-        return ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2) or (25, 80)
-
-    @staticmethod
-    def stop():
-        curses.echo()
-        curses.endwin()
-
     ### Life-cycle
 
-    def __init__(self, stdscr, nrows=None):
+    def __init__(self, stdscr, default_input_window=None):
         self.stdscr = stdscr
-        self.content_pad = None
-        self.content_vscroll_offset = 0
-        self.start(nrows=nrows)
-        self.query_length = 0
-        self.content_limit = 1000
-        self.content_items = None
+        if default_input_window is None:
+            self.default_input_window = self.stdscr
+        else:
+            self.default_input_window = default_input_window
 
-    def start(self, nrows=None):
-        screen_height, screen_width = self.screen_dimensions()
-        cv_height, cv_width = self.content_pad_available_display_dimensions()
-        if nrows is None:
-            nrows = cv_height
-        self.content_pad = curses.newpad(nrows, cv_width)
-        self.query_window = curses.newwin(self.QUERY_WINDOW_HEIGHT, cv_width, screen_height-self.QUERY_WINDOW_HEIGHT, 0)
+    ### Window Management
 
+    def start(self):
+        self.init_colors()
+
+    def init_colors(self):
         curses.use_default_colors()
 
         curses.init_pair(1, -1, -1)
@@ -275,10 +261,145 @@ class Display(object): # {{{2
         self.stop()
         sys.exit(exit_arg)
 
-    ### Book-keeping
-
     def screen_dimensions(self):
         return self.stdscr.getmaxyx()
+
+    def set_cursor(self, value):
+        if value is None:
+            return
+        try:
+            return curses.curs_set(value)
+        except:
+            pass
+
+    ### Input
+
+    def getch(self, blocking=None, echo=None, focal_window=None):
+        # set state
+        if focal_window is None:
+            focal_window = self.default_input_window
+        if blocking:
+            focal_window.nodelay(0)
+        else:
+            focal_window.nodelay(1)
+        if echo is False:
+            curses.noecho()
+        elif echo is True:
+            curses.echo()
+        ch = focal_window.getch()
+        ### FOLLOWING HACK NOT NEEDED ANY MORE, DUE TO FOLLOWING APPROACH::
+        ###
+        ###    with os.fdopen(0, 'r') as src:
+        ###       for item in src.read().split("\n"):
+        ###            # do stuff!
+        ###    sys.stdin = open("/dev/tty", "r")
+        ###
+        # if blocking and ch == -1:
+        #     # We are here because files were read from standard input
+        #     # and now input is unavailable. This hack works on POSIX
+        #     # systems ... but ARROW keys lead to exit in the loop
+        #     # because we checking for escape (by itself) in a non-blocking
+        #     # way.
+        #     import tty
+        #     fd = sys.stdin.fileno()
+        #     tty_mode = tty.tcgetattr(fd)
+        #     tty.setcbreak(fd)
+        #     try:
+        #         ch = ord(os.read(fd, 1))
+        #     finally:
+        #         tty.tcsetattr(fd, tty.TCSAFLUSH, tty_mode)
+        #     assert isinstance(ch, int)
+
+        # restore state
+        if blocking:
+            focal_window.nodelay(1)
+        if echo:
+            curses.noecho()
+        return ch
+
+    def get_keycode(self, blocking=True, echo=False, focal_window=None):
+        ch_value = self.getch(blocking=blocking, echo=echo, focal_window=focal_window)
+        if ch_value == -1:
+            return None
+        elif ch_value == 27:
+            # Escape: could be just Escape, could be Ansi escape for
+            # arrows
+            # just escape? try non-blocking read to see if
+            # any other characters
+            ch_value = self.getch(blocking=False, echo=echo, focal_window=focal_window)
+            if ch_value == -1:
+                # Nope: just escape
+                return self.KEYCODES[27]
+            # other characters available
+            # assuming arrow-key, we discard
+            # the current and read the next
+            ch_value = self.getch(blocking=True, echo=echo, focal_window=focal_window)
+            return self.KEYCODES.get(-ch_value, None) # None if not handled
+        else:
+            return self.KEYCODES.get(ch_value, None)
+
+    def get_query_keycode(self, echo=False, focal_window=None):
+        if focal_window is None:
+            focal_window = self.default_input_window
+        focal_window.move(self.QUERY_WINDOW_HEIGHT - self.QUERY_ROW_OFFSET, self.query_length)
+        cursor = self.set_cursor(2)
+        keycode = self.get_keycode(blocking=True, echo=echo, focal_window=focal_window)
+        cursor = self.set_cursor(cursor)
+        return keycode
+
+    def pause_for_keypress(self):
+        cursor = self.set_cursor(2)
+        ch = self.getch(blocking=True)
+        while ch != -1:
+            ch = self.getch(blocking=False)
+        self.set_cursor(cursor)
+        return ch
+
+    def check_for_cancel(self):
+        keycode = self.get_keycode(blocking=False, echo=False)
+        if keycode is not None and keycode.name in self.CANCEL_KEYCODES_NAMES:
+            return True
+        return False
+
+
+
+
+# }}}2
+
+class Display(VisualInterface): # {{{2
+
+    # class variables {{{3
+    FIRST_ITEM_ROW_OFFSET = 3
+    STATUS_BAR_OFFSET     = 2
+    QUERY_ROW_OFFSET      = 1
+    QUERY_WINDOW_HEIGHT    = 2
+    # }}}3
+
+    class OutOfWindowBoundsException(Exception):
+        pass
+
+    ### Life-cycle
+
+    def __init__(self, stdscr, nrows=None):
+        VisualInterface.__init__(self, stdscr=stdscr)
+        self.content_pad = None
+        self.content_vscroll_offset = 0
+        self.start(nrows=nrows)
+        self.query_length = 0
+        self.content_limit = 1000
+        self.content_items = None
+
+    def start(self, nrows=None):
+        VisualInterface.start(self)
+        screen_height, screen_width = self.screen_dimensions()
+        cv_height, cv_width = self.content_pad_available_display_dimensions()
+        if nrows is None:
+            nrows = cv_height
+        self.content_pad = curses.newpad(nrows, cv_width)
+        self.query_window = curses.newwin(self.QUERY_WINDOW_HEIGHT, cv_width, screen_height-self.QUERY_WINDOW_HEIGHT, 0)
+        self.default_input_window = self.query_window
+
+    ### Book-keeping
 
     def query_window_dimensions(self):
         return self.query_window.getmaxyx()
@@ -293,91 +414,140 @@ class Display(object): # {{{2
     def resize_content_pad(self, nrows):
         self.content_pad.resize(nrows, self.screen_dimensions()[1])
 
-    def set_cursor(self, value):
-        if value is None:
-            return
-        try:
-            return curses.curs_set(value)
-        except:
-            pass
-
     ### Rendering (Framework)
 
     def message(self, message_lines, color=None, vpadding=0, hpadding=2):
-        # message_lines = []
-        # for y in range(100):
-        #     row = []
-        #     for x in range(100):
-        #         row.append("<y{},x{}>".format(y, x))
-        #     row = "|".join(row)
-        #     message_lines.append("0]" + row + "[$")
+
+        ### FOR DEBUGGING ###
+        message_lines = []
+        for y in range(100):
+            row = []
+            for x in range(100):
+                row.append("<y{},x{}>".format(y, x))
+            row = "|".join(row)
+            message_lines.append("0]" + row + "[$")
+        ### FOR DEBUGGING ###
 
         if color is None:
+            # color = self.default_color
             color = self.error_color
-        max_row_len = max(len(r) for r in message_lines)
-        max_rows = len(message_lines) + (vpadding * 2)
         available_height, available_width = self.content_pad_available_display_dimensions()
-        available_height -= (vpadding * 2)
-        available_width -= (hpadding * 2)
-        view_height = min(max_rows, available_height-vpadding)
-        view_width = min(max_row_len + 2, available_width - hpadding)
-        view_pos_top = max(0, int((available_height-view_height)/2) + vpadding)
-        view_pos_left = max(0, int((available_width-view_width)/2) + hpadding)
-        view_y, view_x = 0, 0
-        message_buffer_height = max_rows
-        message_buffer_width = max_row_len + (hpadding * 2)
-        message_buffer = curses.newpad(message_buffer_height, message_buffer_width)
-        message_buffer.bkgdset(" ", color)
-        # message_buffer.scrollok(0)
-        def _message_buffer_refresh():
-            message_buffer.refresh(
-                    view_y,
-                    view_x,
-                    view_pos_top,
-                    view_pos_left,
-                    view_pos_top + view_height - 1,
-                    view_pos_left + view_width - 1,
-                    )
+        message_window = MessageWindow(
+                message_lines=message_lines,
+                available_height=available_height,
+                available_width=available_width,
+                color=color,
+                vpadding=vpadding,
+                hpadding=hpadding,
+                )
+        # message_window.render()
+        # self.pause_for_keypress()
+        message_window.show(self)
+        return
 
-        message_buffer.erase()
-        for line_idx, line in enumerate(message_lines):
-            message_buffer.addstr(line_idx + vpadding, hpadding, line.ljust(message_buffer_width-(hpadding*2)), color)
+        # while True:
+        #     keycode = self.get_keycode(blocking=True, echo=False, focal_window=message_buffer)
+        #     if keycode is None:
+        #         continue
+        #     if keycode.name in self.CANCEL_KEYCODES_NAMES:
+        #         break
+        #     elif keycode.name == "UP" or keycode.name == "k":
+        #         view_y -= 1
+        #         if view_y < 0:
+        #             view_y = 0
+        #     elif keycode.name == "DOWN" or keycode.name == "j":
+        #         if view_y + view_height < message_buffer_height:
+        #             view_y += 1
+        #     elif keycode.name == "g":
+        #         view_y = 0
+        #     elif keycode.name == "G":
+        #         view_y = message_buffer_height - view_height
+        #     elif keycode.name == "LEFT" or keycode.name == "h":
+        #         view_x -= 1
+        #         if view_x < 0:
+        #             view_x = 0
+        #     elif keycode.name == "RIGHT" or keycode.name == "l":
+        #         if view_x + view_width < message_buffer_width:
+        #             view_x += 1
+        #     elif keycode.name == "0":
+        #         view_x = 0
+        #     elif keycode.name == "$":
+        #         view_x = message_buffer_width - view_width
+        #     _message_buffer_refresh()
 
-        _message_buffer_refresh()
 
-        while True:
-            keycode = self.get_keycode(blocking=True, echo=False, focal_window=message_buffer)
-            if keycode is None:
-                continue
-            if keycode.name in self.CANCEL_KEYCODES_NAMES:
-                break
-            elif keycode.name == "UP" or keycode.name == "k":
-                view_y -= 1
-                if view_y < 0:
-                    view_y = 0
-            elif keycode.name == "DOWN" or keycode.name == "j":
-                if view_y + view_height < message_buffer_height:
-                    view_y += 1
-            elif keycode.name == "g":
-                view_y = 0
-            elif keycode.name == "G":
-                view_y = message_buffer_height - view_height
-            elif keycode.name == "LEFT" or keycode.name == "h":
-                view_x -= 1
-                if view_x < 0:
-                    view_x = 0
-            elif keycode.name == "RIGHT" or keycode.name == "l":
-                if view_x + view_width < message_buffer_width:
-                    view_x += 1
-            elif keycode.name == "0":
-                view_x = 0
-            elif keycode.name == "$":
-                view_x = message_buffer_width - view_width
-            _message_buffer_refresh()
+        # # message_lines = []
+        # # for y in range(100):
+        # #     row = []
+        # #     for x in range(100):
+        # #         row.append("<y{},x{}>".format(y, x))
+        # #     row = "|".join(row)
+        # #     message_lines.append("0]" + row + "[$")
+
+        # max_row_len = max(len(r) for r in message_lines)
+        # max_rows = len(message_lines) + (vpadding * 2)
+        # available_height, available_width = self.content_pad_available_display_dimensions()
+        # available_height -= (vpadding * 2)
+        # available_width -= (hpadding * 2)
+        # view_height = min(max_rows, available_height-vpadding)
+        # view_width = min(max_row_len + 2, available_width - hpadding)
+        # view_pos_top = max(0, int((available_height-view_height)/2) + vpadding)
+        # view_pos_left = max(0, int((available_width-view_width)/2) + hpadding)
+        # view_y, view_x = 0, 0
+        # message_buffer_height = max_rows
+        # message_buffer_width = max_row_len + (hpadding * 2)
+        # message_buffer = curses.newpad(message_buffer_height, message_buffer_width)
+        # message_buffer.bkgdset(" ", color)
+        # # message_buffer.scrollok(0)
+        # def _message_buffer_refresh():
+        #     message_buffer.refresh(
+        #             view_y,
+        #             view_x,
+        #             view_pos_top,
+        #             view_pos_left,
+        #             view_pos_top + view_height - 1,
+        #             view_pos_left + view_width - 1,
+        #             )
+
+        # message_buffer.erase()
+        # for line_idx, line in enumerate(message_lines):
+        #     message_buffer.addstr(line_idx + vpadding, hpadding, line.ljust(message_buffer_width-(hpadding*2)), color)
+
+        # _message_buffer_refresh()
+
+        # while True:
+        #     keycode = self.get_keycode(blocking=True, echo=False, focal_window=message_buffer)
+        #     if keycode is None:
+        #         continue
+        #     if keycode.name in self.CANCEL_KEYCODES_NAMES:
+        #         break
+        #     elif keycode.name == "UP" or keycode.name == "k":
+        #         view_y -= 1
+        #         if view_y < 0:
+        #             view_y = 0
+        #     elif keycode.name == "DOWN" or keycode.name == "j":
+        #         if view_y + view_height < message_buffer_height:
+        #             view_y += 1
+        #     elif keycode.name == "g":
+        #         view_y = 0
+        #     elif keycode.name == "G":
+        #         view_y = message_buffer_height - view_height
+        #     elif keycode.name == "LEFT" or keycode.name == "h":
+        #         view_x -= 1
+        #         if view_x < 0:
+        #             view_x = 0
+        #     elif keycode.name == "RIGHT" or keycode.name == "l":
+        #         if view_x + view_width < message_buffer_width:
+        #             view_x += 1
+        #     elif keycode.name == "0":
+        #         view_x = 0
+        #     elif keycode.name == "$":
+        #         view_x = message_buffer_width - view_width
+        #     _message_buffer_refresh()
 
         # panel = curses.panel.new_panel(message_buffer)
-        message_buffer.erase()
-        _message_buffer_refresh()
+        # message_buffer.erase()
+        # _message_buffer_refresh()
 
         # screen_height, screen_width = self.screen_dimensions()
         # height = min(20, screen_height)
@@ -406,16 +576,11 @@ class Display(object): # {{{2
                 message=message,
                 color=self.error_color)
 
-        # self.write_status_bar(message, self.error_color, refresh=True)
-        # self.query_window.move(
-        #     self.QUERY_WINDOW_HEIGHT - self.STATUS_BAR_OFFSET, min(len(message), self.query_window_dimensions()[1]-1))
-        # self.pause_for_keypress()
-
     def write_status_bar(self, s, color=None, refresh=True):
         if color is None:
             color = self.status_bar_color
         height, width = self.query_window_dimensions()
-        padded_message = s.ljust(width-1)[:width-1]
+        padded_message = s.ljust(width)[:width]
         self.query_window.addstr(self.QUERY_WINDOW_HEIGHT - self.STATUS_BAR_OFFSET, 0, padded_message, color)
         if refresh:
             self.query_window.refresh()
@@ -499,6 +664,7 @@ class Display(object): # {{{2
             search_path_info=None,
             ):
         height, width = self.query_window_dimensions()
+
         status_bar_components = []
         if match_type == "fuzzy":
             prompt = "? "
@@ -524,11 +690,15 @@ class Display(object): # {{{2
                 # if num_entries:
                 #     focal_item_index += 1
                 # status_bar += ("{} of {} entries (".format(focal_item_index, num_entries, truncate_front(search_path_info, remaining).rjust(remaining)
-        status_bar = status_bar.ljust(width-1)[:width-1]
+
+        # status_bar = status_bar.ljust(width)[:width+1]
+        status_bar = status_bar.ljust(width)[:width]
         self.query_window.addstr(self.QUERY_WINDOW_HEIGHT - self.STATUS_BAR_OFFSET, 0, status_bar, self.status_bar_color)
+
         q = prompt + query_str
         self.query_length = len(q)
         self.query_window.addstr(self.QUERY_WINDOW_HEIGHT - self.QUERY_ROW_OFFSET, 0, q, self.prompt_color)
+
 
     ### Displaying
 
@@ -583,95 +753,6 @@ class Display(object): # {{{2
             curses.doupdate()
         except Exception as e:
             pass
-
-    ### Input
-
-    def getch(self, blocking=None, echo=None, focal_window=None):
-        # set state
-        if focal_window is None:
-            focal_window = self.query_window
-        if blocking:
-            focal_window.nodelay(0)
-        else:
-            focal_window.nodelay(1)
-        if echo is False:
-            curses.noecho()
-        elif echo is True:
-            curses.echo()
-        ch = focal_window.getch()
-        ### FOLLOWING HACK NOT NEEDED ANY MORE, DUE TO FOLLOWING APPROACH::
-        ###
-        ###    with os.fdopen(0, 'r') as src:
-        ###       for item in src.read().split("\n"):
-        ###            # do stuff!
-        ###    sys.stdin = open("/dev/tty", "r")
-        ###
-        # if blocking and ch == -1:
-        #     # We are here because files were read from standard input
-        #     # and now input is unavailable. This hack works on POSIX
-        #     # systems ... but ARROW keys lead to exit in the loop
-        #     # because we checking for escape (by itself) in a non-blocking
-        #     # way.
-        #     import tty
-        #     fd = sys.stdin.fileno()
-        #     tty_mode = tty.tcgetattr(fd)
-        #     tty.setcbreak(fd)
-        #     try:
-        #         ch = ord(os.read(fd, 1))
-        #     finally:
-        #         tty.tcsetattr(fd, tty.TCSAFLUSH, tty_mode)
-        #     assert isinstance(ch, int)
-
-        # restore state
-        if blocking:
-            focal_window.nodelay(1)
-        if echo:
-            curses.noecho()
-        return ch
-
-    def get_keycode(self, blocking=True, echo=False, focal_window=None):
-        ch_value = self.getch(blocking=blocking, echo=echo, focal_window=focal_window)
-        if ch_value == -1:
-            return None
-        elif ch_value == 27:
-            # Escape: could be just Escape, could be Ansi escape for
-            # arrows
-            # just escape? try non-blocking read to see if
-            # any other characters
-            ch_value = self.getch(blocking=False, echo=echo, focal_window=focal_window)
-            if ch_value == -1:
-                # Nope: just escape
-                return self.KEYCODES[27]
-            # other characters available
-            # assuming arrow-key, we discard
-            # the current and read the next
-            ch_value = self.getch(blocking=True, echo=echo, focal_window=focal_window)
-            return self.KEYCODES.get(-ch_value, None) # None if not handled
-        else:
-            return self.KEYCODES.get(ch_value, None)
-
-    def get_query_keycode(self, echo=False, focal_window=None):
-        if focal_window is None:
-            focal_window = self.query_window
-        focal_window.move(self.QUERY_WINDOW_HEIGHT - self.QUERY_ROW_OFFSET, self.query_length)
-        cursor = self.set_cursor(2)
-        keycode = self.get_keycode(blocking=True, echo=echo, focal_window=focal_window)
-        cursor = self.set_cursor(cursor)
-        return keycode
-
-    def pause_for_keypress(self):
-        cursor = self.set_cursor(2)
-        ch = self.getch(blocking=True)
-        while ch != -1:
-            ch = self.getch(blocking=False)
-        self.set_cursor(cursor)
-        return ch
-
-    def check_for_cancel(self):
-        keycode = self.get_keycode(blocking=False, echo=False)
-        if keycode is not None and keycode.name in self.CANCEL_KEYCODES_NAMES:
-            return True
-        return False
 
     ### Content Interaction
 
@@ -734,7 +815,136 @@ class ProgressTicker(object): # {{{2
         # self.window.addstr(s1, self.spinner_color)
         # self.window.move(height - STATUS_BAR_OFFSET, min(len(s0), width-1))
         # self.window.refresh()
+# }}}2
 
+class MessageWindow(object): # {{{2
+    def __init__(self,
+            message_lines,
+            available_height,
+            available_width,
+            color=None,
+            vpadding=0,
+            hpadding=2,
+            vmargin=0,
+            hmargin=0,
+            ):
+        self.message_lines = message_lines
+        self.available_height = available_height
+        self.available_width = available_width
+        self.color = color
+        self.vpadding = vpadding
+        self.hpadding = hpadding
+        self.vmargin = vmargin
+        self.hmargin = hmargin
+        self.message_buffer = None
+        # self.setup()
+
+    def __del__(self):
+        self.teardown()
+
+    def setup(self):
+        if self.message_buffer is not None:
+            self.teardown()
+
+        # self.available_height -= (self.vpadding * 2)
+        # self.available_width -= (self.hpadding * 2)
+
+        max_rows = len(self.message_lines) + (self.vpadding * 2)
+        max_cols = max(len(r) for r in self.message_lines)
+        max_cols += (self.hpadding * 2)
+        actual_available_height = self.available_height - (self.vmargin*2)
+        actual_available_width = self.available_width - (self.hmargin*2)
+        self.view_height = min(max_rows, actual_available_height)
+        self.view_width = min(max_cols, actual_available_width)
+        self.view_pos_top = max(0, int((actual_available_height-self.view_height)/2))
+        self.view_pos_left = max(0, int((actual_available_width-self.view_width)/2))
+        self.view_y, self.view_x = 0, 0
+        self.message_buffer_height = max_rows + 1
+        self.message_buffer_width = max_cols + 1
+        self.message_buffer = curses.newpad(self.message_buffer_height, self.message_buffer_width)
+        self.message_buffer.bkgdset(" ", self.color)
+
+    def render(self):
+        if self.message_buffer is None:
+            self.setup()
+        self.render_lines()
+        self.refresh()
+
+    def teardown(self):
+        if self.message_buffer is not None:
+            self.message_buffer.erase()
+            self.refresh()
+            self.message_buffer = None
+
+    def render_lines(self):
+        self.message_buffer.erase()
+
+        # blank_line = " " * self.message_buffer_width
+        # for line_idx in range(self.vpadding):
+        #     pass
+            # self.message_buffer.addstr(
+            #         line_idx,
+            #         0,
+            #         blank_line,
+            #         self.color
+            #         )
+        for line_idx, line in enumerate(self.message_lines):
+            self.message_buffer.addstr(
+                    line_idx + self.vpadding,
+                    self.hpadding,
+                    line.ljust(self.message_buffer_width-(self.hpadding*2)),
+                    self.color,
+                    )
+        # for line_idx in range(self.vpadding):
+        #     self.message_buffer.addstr(
+        #             max_rows-self.vpadding,
+        #             0,
+        #             max_cols,
+        #             self.color)
+
+    def refresh(self):
+        self.message_buffer.refresh(
+                self.view_y,
+                self.view_x,
+                self.view_pos_top,
+                self.view_pos_left,
+                self.view_pos_top + self.view_height,
+                self.view_pos_left + self.view_width-1,
+                )
+
+    def show(self, display):
+        # self.render()
+        if self.message_buffer is None:
+            self.render()
+        while True:
+            keycode = display.get_keycode(blocking=True, echo=False, focal_window=self.message_buffer)
+            if keycode is None:
+                continue
+            if keycode.name in display.CANCEL_KEYCODES_NAMES:
+                break
+            elif keycode.name == "UP" or keycode.name == "k":
+                self.view_y -= 1
+                if self.view_y < 0:
+                    self.view_y = 0
+            elif keycode.name == "DOWN" or keycode.name == "j":
+                if self.view_y + self.view_height < self.message_buffer_height:
+                    self.view_y += 1
+            elif keycode.name == "g":
+                self.view_y = 0
+            elif keycode.name == "G":
+                self.view_y = self.message_buffer_height - self.view_height
+            elif keycode.name == "LEFT" or keycode.name == "h":
+                self.view_x -= 1
+                if self.view_x < 0:
+                    self.view_x = 0
+            elif keycode.name == "RIGHT" or keycode.name == "l":
+                if self.view_x + self.view_width < self.message_buffer_width:
+                    self.view_x += 1
+            elif keycode.name == "0":
+                self.view_x = 0
+            elif keycode.name == "$":
+                self.view_x = self.message_buffer_width - self.view_width
+            self.refresh()
 # }}}2
 
 
