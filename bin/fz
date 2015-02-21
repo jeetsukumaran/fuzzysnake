@@ -491,7 +491,7 @@ class Display(object): # {{{2
                         )
             curses.doupdate()
         except Exception as e:
-            raise
+            pass
 
     ### Input
 
