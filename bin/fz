@@ -116,8 +116,7 @@ def truncate_middle(line, length=70, truncation_str="..."):
 
 class Subscreen(object): # {{{2
 
-    def __enter__(self):
-
+    def clone_stdout(self):
         # clone stdout: this allows us to open
         # the curses window in a subshell and
         # print the result to the "real" stdout
@@ -127,6 +126,12 @@ class Subscreen(object): # {{{2
         os.dup2(self.new_stdout_clone, sys.stdout.fileno()) # 1
         self.prev_stdout = sys.stdout
 
+    def restore_stdout(self):
+        # restore standard output
+        os.dup2(self.prev_stdout_fd, self.prev_stdout.fileno())
+        sys.stdout = self.prev_stdout
+
+    def start_stdscr(self):
         # initialize screen
         self.stdscr = curses.initscr()
         curses.noecho()
@@ -141,10 +146,8 @@ class Subscreen(object): # {{{2
             self.cursor_setting = curses.curs_set(0)
         except:
             pass
-        return self.stdscr
 
-    def __exit__(self, exc_type, exc_value, traceback):
-
+    def stop_stdscr(self):
         # restore terminal
         # self.stdscr.keypad(0)
         if self.cursor_setting is not None:
@@ -156,9 +159,16 @@ class Subscreen(object): # {{{2
         curses.nocbreak()
         curses.endwin()
 
-        # restore standard output
-        os.dup2(self.prev_stdout_fd, self.prev_stdout.fileno())
-        self.stdout = self.prev_stdout
+    def __enter__(self):
+        self.clone_stdout()
+        self.start_stdscr()
+        # return self.stdscr
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.stop_stdscr()
+        self.restore_stdout()
+
 # }}}2
 
 class Display(object): # {{{2
@@ -1375,8 +1385,9 @@ class Controller(object): # {{{2
 
     ### Life-cycle
 
-    def __init__(self, display, args):
+    def __init__(self, display, subscreen, args):
         self.display = display
+        self.subscreen = subscreen
         self.args = args
         self.editor_path = os.environ.get("FUZZYSNAKE_EDITOR", os.environ.get("EDITOR", "vi"))
 
@@ -1497,12 +1508,15 @@ class Controller(object): # {{{2
             execute_command(self.args.action_target, filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
         elif self.args.action_type == "print":
             if not hasattr(self.args, "action_target") or self.args.action_target == "-":
+                self.subscreen.restore_stdout()
                 for filepath in filepaths:
                     sys.stdout.write(filepath)
                     sys.stdout.write("\n")
+                    sys.stdout.flush()
                     if not self.args.quiet:
                         sys.stderr.write(filepath)
                         sys.stderr.write("\n")
+                self.subscreen.clone_stdout()
                 if not as_subprocess:
                     self.exit(0)
             else:
@@ -2222,9 +2236,9 @@ class SetCustomCommandAction(argparse.Action): # {{{2
 
 def main(): # {{{1
     args = parse_cli_args()
-    with Subscreen() as stdscr:
-        display = Display(stdscr=stdscr)
-        controller = Controller(display=display, args=args)
+    with Subscreen() as subscreen:
+        display = Display(stdscr=subscreen.stdscr)
+        controller = Controller(display=display, subscreen=subscreen, args=args)
         if args.action_type == "list-and-exit":
             controller.print_list()
         else:
