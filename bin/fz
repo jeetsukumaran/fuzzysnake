@@ -221,11 +221,9 @@ class VisualInterface(object): # {{{2
             self.default_input_window = self.stdscr
         else:
             self.default_input_window = default_input_window
+        self.init_colors()
 
     ### Window Management
-
-    def start(self):
-        self.init_colors()
 
     def init_colors(self):
         curses.use_default_colors()
@@ -271,6 +269,16 @@ class VisualInterface(object): # {{{2
             return curses.curs_set(value)
         except:
             pass
+
+    def fill(self, window, color=None):
+        height, width = window.getmaxyx()
+        if color is None:
+            color = 0
+        window.erase()
+        blank_line = " " * width
+        for row_idx in range(height):
+            window.addstr(0, row_idx, blank_line, color)
+
 
     ### Input
 
@@ -382,7 +390,7 @@ class Display(VisualInterface): # {{{2
 
     def __init__(self, stdscr, nrows=None):
         VisualInterface.__init__(self, stdscr=stdscr)
-        self.content_pad = None
+        self.content_buffer = None
         self.content_vscroll_offset = 0
         self.start(nrows=nrows)
         self.query_length = 0
@@ -390,12 +398,12 @@ class Display(VisualInterface): # {{{2
         self.content_items = None
 
     def start(self, nrows=None):
-        VisualInterface.start(self)
         screen_height, screen_width = self.screen_dimensions()
-        cv_height, cv_width = self.content_pad_available_display_dimensions()
+        cv_height, cv_width = self.content_buffer_available_display_dimensions()
         if nrows is None:
             nrows = cv_height
-        self.content_pad = curses.newpad(nrows, cv_width)
+        self.content_buffer = curses.newpad(nrows, cv_width)
+        self.fill(self.content_buffer)
         self.query_window = curses.newwin(self.QUERY_WINDOW_HEIGHT, cv_width, screen_height-self.QUERY_WINDOW_HEIGHT, 0)
         self.default_input_window = self.query_window
 
@@ -404,15 +412,16 @@ class Display(VisualInterface): # {{{2
     def query_window_dimensions(self):
         return self.query_window.getmaxyx()
 
-    def content_pad_dimensions(self):
-        return self.content_pad.getmaxyx()
+    def content_buffer_dimensions(self):
+        return self.content_buffer.getmaxyx()
 
-    def content_pad_available_display_dimensions(self):
+    def content_buffer_available_display_dimensions(self):
         screen_height, screen_width = self.screen_dimensions()
         return screen_height - self.QUERY_WINDOW_HEIGHT - 1, screen_width
 
-    def resize_content_pad(self, nrows):
-        self.content_pad.resize(nrows, self.screen_dimensions()[1])
+    def resize_content_buffer(self, nrows):
+        self.content_buffer.resize(nrows, self.screen_dimensions()[1])
+        self.fill(self.content_buffer)
 
     ### Rendering (Framework)
 
@@ -428,11 +437,9 @@ class Display(VisualInterface): # {{{2
             message_lines.append("0]" + row + "[$")
         ### FOR DEBUGGING ###
 
-        if color is None:
-            # color = self.default_color
-            color = self.error_color
-        available_height, available_width = self.content_pad_available_display_dimensions()
+        available_height, available_width = self.content_buffer_available_display_dimensions()
         message_window = MessageWindow(
+                stdscr=self.stdscr,
                 message_lines=message_lines,
                 available_height=available_height,
                 available_width=available_width,
@@ -486,7 +493,7 @@ class Display(VisualInterface): # {{{2
 
         # max_row_len = max(len(r) for r in message_lines)
         # max_rows = len(message_lines) + (vpadding * 2)
-        # available_height, available_width = self.content_pad_available_display_dimensions()
+        # available_height, available_width = self.content_buffer_available_display_dimensions()
         # available_height -= (vpadding * 2)
         # available_width -= (hpadding * 2)
         # view_height = min(max_rows, available_height-vpadding)
@@ -595,7 +602,7 @@ class Display(VisualInterface): # {{{2
             whole_path_matching,
             search_path_info=None,
             ):
-        self.content_pad.erase()
+        self.content_buffer.erase()
         self.render_content_items(items, focal_item_index)
         self.query_window.erase()
         self.render_query(
@@ -608,11 +615,11 @@ class Display(VisualInterface): # {{{2
         return self.content_items
 
     def render_content_items(self, items, focal_item_index):
-        self.content_pad.erase()
+        self.content_buffer.erase()
         self.content_items = items
         if self.content_items:
-            if len(self.content_items) > self.content_pad_dimensions()[0]:
-                self.resize_content_pad(len(self.content_items))
+            if len(self.content_items) > self.content_buffer_dimensions()[0]:
+                self.resize_content_buffer(len(self.content_items))
             for current_idx, item in enumerate(self.content_items):
                 try:
                     self.render_content_item(current_idx, item, current_idx==focal_item_index)
@@ -624,37 +631,37 @@ class Display(VisualInterface): # {{{2
             item_index,
             item,
             is_focal_item):
-        height, width = self.content_pad_dimensions()
+        height, width = self.content_buffer_dimensions()
         row = height - item_index - 1
         if row < 0:
             raise Display.OutOfWindowBoundsException
-        # self.content_pad.move(row, 0)
-        # self.content_pad.clrtoeol()
+        # self.content_buffer.move(row, 0)
+        # self.content_buffer.clrtoeol()
         # -4: account for leader, and avoid writing at last position
         display_name = truncate_middle(item.display_name, width-4).ljust(width-4)
         weight = curses.A_NORMAL
         color = self.default_color
         if item.is_selected:
-            self.content_pad.addstr(row, 0, "#", self.is_selected_color | curses.A_BOLD)
+            self.content_buffer.addstr(row, 0, "#", self.is_selected_color | curses.A_BOLD)
             color = self.is_selected_color
         else:
-            self.content_pad.addstr(row, 0, " ", self.default_color)
+            self.content_buffer.addstr(row, 0, " ", self.default_color)
         if is_focal_item:
-            self.content_pad.addstr(row, 1, "> ", self.default_color)
+            self.content_buffer.addstr(row, 1, "> ", self.default_color)
             color = self.current_row_color
             # to reverse all parts of the line (included matched)
             weight = curses.A_REVERSE
         else:
-            self.content_pad.addstr(row, 1, "  ", self.default_color)
+            self.content_buffer.addstr(row, 1, "  ", self.default_color)
         if item.score > 0:
             left = display_name[:item.match_start]
             main = display_name[item.match_start:item.match_end]
             right = display_name[item.match_end:]
-            self.content_pad.addstr(row, 3, left, color | weight)
-            self.content_pad.addstr(row, 3 + len(left), main, self.match_color | weight)
-            self.content_pad.addstr(row, 3 + len(left) + len(main), right, color | weight)
+            self.content_buffer.addstr(row, 3, left, color | weight)
+            self.content_buffer.addstr(row, 3 + len(left), main, self.match_color | weight)
+            self.content_buffer.addstr(row, 3 + len(left) + len(main), right, color | weight)
         else:
-            self.content_pad.addstr(row, 3, display_name, color | weight)
+            self.content_buffer.addstr(row, 3, display_name, color | weight)
 
     def render_query(self,
             query_str,
@@ -704,19 +711,19 @@ class Display(VisualInterface): # {{{2
 
     def clear(self):
         self.query_window.erase()
-        self.content_pad.erase()
+        self.content_buffer.erase()
 
     def clear_content(self):
-        self.content_pad.erase()
+        self.content_buffer.erase()
 
     def refresh(self, focal_item_index):
         try:
-            content_height, content_width = self.content_pad_dimensions()
+            content_height, content_width = self.content_buffer_dimensions()
             screen_height, screen_width = self.screen_dimensions()
             self.query_window.noutrefresh()
             num_content_items = len(self.content_items)
             if not num_content_items:
-                self.content_pad.noutrefresh(
+                self.content_buffer.noutrefresh(
                         0,
                         0,
                         0,
@@ -725,7 +732,7 @@ class Display(VisualInterface): # {{{2
                         screen_width,
                         )
             else:
-                available_height = self.content_pad_available_display_dimensions()[0]
+                available_height = self.content_buffer_available_display_dimensions()[0]
                 if num_content_items < available_height:
                     screen_top = screen_height - num_content_items - (self.QUERY_WINDOW_HEIGHT)
                     content_top = content_height - num_content_items
@@ -742,7 +749,7 @@ class Display(VisualInterface): # {{{2
                         # middle
                         current_item_row = content_height - focal_item_index
                         content_top = current_item_row - half_available_height - 1
-                self.content_pad.noutrefresh(
+                self.content_buffer.noutrefresh(
                         content_top,
                         0,
                         screen_top,
@@ -782,11 +789,11 @@ class Display(VisualInterface): # {{{2
         return new_item_index
 
     def page_down(self, focal_item_index):
-        available_height = self.content_pad_available_display_dimensions()[0]
+        available_height = self.content_buffer_available_display_dimensions()[0]
         return self.move_focus_to_next(focal_item_index, available_height)
 
     def page_up(self, focal_item_index):
-        available_height = self.content_pad_available_display_dimensions()[0]
+        available_height = self.content_buffer_available_display_dimensions()[0]
         return self.move_focus_to_previous(focal_item_index, available_height)
 
     ### Special
@@ -817,8 +824,9 @@ class ProgressTicker(object): # {{{2
         # self.window.refresh()
 # }}}2
 
-class MessageWindow(object): # {{{2
+class MessageWindow(VisualInterface): # {{{2
     def __init__(self,
+            stdscr,
             message_lines,
             available_height,
             available_width,
@@ -828,6 +836,7 @@ class MessageWindow(object): # {{{2
             vmargin=0,
             hmargin=0,
             ):
+        VisualInterface.__init__(self, stdscr=stdscr)
         self.message_lines = message_lines
         self.available_height = available_height
         self.available_width = available_width
@@ -862,7 +871,7 @@ class MessageWindow(object): # {{{2
         self.message_buffer_height = max_rows + 1
         self.message_buffer_width = max_cols + 1
         self.message_buffer = curses.newpad(self.message_buffer_height, self.message_buffer_width)
-        self.message_buffer.bkgdset(" ", self.color)
+        self.fill(color=self.color)
 
     def render(self):
         if self.message_buffer is None:
@@ -876,31 +885,31 @@ class MessageWindow(object): # {{{2
             self.refresh()
             self.message_buffer = None
 
+    def fill(self, color=None):
+        if self.message_buffer is None:
+            self.setup()
+        if color is None:
+            color = self.color
+        VisualInterface.fill(self, window=self.message_buffer, color=color)
+
     def render_lines(self):
         self.message_buffer.erase()
-
-        # blank_line = " " * self.message_buffer_width
-        # for line_idx in range(self.vpadding):
-        #     pass
-            # self.message_buffer.addstr(
-            #         line_idx,
-            #         0,
-            #         blank_line,
-            #         self.color
-            #         )
+        self.fill()
+        hpadding = " " * self.hpadding
         for line_idx, line in enumerate(self.message_lines):
+            row_idx = line_idx + self.vpadding
             self.message_buffer.addstr(
-                    line_idx + self.vpadding,
+                    row_idx,
+                    0,
+                    hpadding,
+                    self.color,
+                    )
+            self.message_buffer.addstr(
+                    row_idx,
                     self.hpadding,
                     line.ljust(self.message_buffer_width-(self.hpadding*2)),
                     self.color,
                     )
-        # for line_idx in range(self.vpadding):
-        #     self.message_buffer.addstr(
-        #             max_rows-self.vpadding,
-        #             0,
-        #             max_cols,
-        #             self.color)
 
     def refresh(self):
         self.message_buffer.refresh(
@@ -927,12 +936,12 @@ class MessageWindow(object): # {{{2
                 if self.view_y < 0:
                     self.view_y = 0
             elif keycode.name == "DOWN" or keycode.name == "j":
-                if self.view_y + self.view_height < self.message_buffer_height:
+                if self.view_y + self.view_height < self.message_buffer_height - 2:
                     self.view_y += 1
             elif keycode.name == "g":
                 self.view_y = 0
             elif keycode.name == "G":
-                self.view_y = self.message_buffer_height - self.view_height
+                self.view_y = self.message_buffer_height - self.view_height - 2
             elif keycode.name == "LEFT" or keycode.name == "h":
                 self.view_x -= 1
                 if self.view_x < 0:
@@ -1238,7 +1247,7 @@ class Selector(object): # {{{2
                         display_items = self.apply_query(current_query_chars, source_items)
                         focal_item_index = 0 # TODO: adjust this smartly
                 elif keycode.name == "q":
-                    self.display.message("hello")
+                    self.display.message("hello", color=self.display.error_color, vpadding=2)
                 elif not keycode.is_special:
                     current_query_chars.append(keycode.name)
                     display_items = self.apply_query(current_query_chars, source_items)
