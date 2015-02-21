@@ -712,9 +712,9 @@ def execute_command(cmd,
         else:
             p = subprocess.Popen(cmd)
             p.communicate()
-    except OSError:
-        sys.stderr.write("Failed to execute command with tokens: {}\n".format(cmd))
-        sys.exit(1)
+    except OSError as e:
+        e.command_tokens = cmd
+        raise e
 
 # }}}1
 
@@ -1501,11 +1501,11 @@ class Controller(object): # {{{2
     def apply_action(self, filepaths, as_subprocess=False):
         self.display.stop()
         if self.args.action_type == "edit":
-            execute_command(self.editor_path, filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
+            self.execute_command(self.editor_path, filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
         elif self.args.action_type == "open":
-            execute_command("open", filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
+            self.execute_command("open", filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
         elif self.args.action_type == "command":
-            execute_command(self.args.action_target, filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
+            self.execute_command(self.args.action_target, filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
         elif self.args.action_type == "print":
             if not hasattr(self.args, "action_target") or self.args.action_target == "-":
                 self.subscreen.restore_stdout()
@@ -1533,6 +1533,15 @@ class Controller(object): # {{{2
                 self.exit(error_msg)
             else:
                 self.display.error(error_msg)
+
+    def execute_command(self, *args, **kwargs):
+        self.subscreen.restore_stdout()
+        try:
+            execute_command(*args, **kwargs)
+        except OSError as e:
+            error_msg = "Error executing command: {}".format(" ".join(e.command_tokens))
+            self.exit(error_msg)
+        self.subscreen.clone_stdout()
 
     def exit(self, exit_arg):
         self.display.stop()
