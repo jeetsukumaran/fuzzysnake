@@ -316,7 +316,7 @@ class Display(object): # {{{2
             self.content_pad.erase()
         self.write_status_bar(message, self.error_color, refresh=True)
         self.query_window.move(
-            self.QUERY_WINDOW_HEIGHT - self.STATUS_BAR_OFFSET, min(len(message), self.query_window()[1]-1))
+            self.QUERY_WINDOW_HEIGHT - self.STATUS_BAR_OFFSET, min(len(message), self.query_window_dimensions()[1]-1))
         self.pause_for_keypress()
 
     def write_status_bar(self, s, color=None, refresh=True):
