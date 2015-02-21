@@ -176,6 +176,7 @@ class Display(object): # {{{2
     FIRST_ITEM_ROW_OFFSET = 3
     STATUS_BAR_OFFSET     = 2
     QUERY_ROW_OFFSET      = 1
+    QUERY_WINDOW_HEIGHT    = 2
     # }}}3
 
     # key codes {{{3
@@ -225,7 +226,6 @@ class Display(object): # {{{2
 
     def __init__(self, stdscr, nrows=None):
         self.stdscr = stdscr
-        self.is_input_blocking = None
         self.content_pad = None
         self.content_vscroll_offset = 0
         self._is_input_blocking = None
@@ -235,10 +235,12 @@ class Display(object): # {{{2
         self.content_items = None
 
     def start(self, nrows=None):
+        screen_height, screen_width = self.screen_dimensions()
         cv_height, cv_width = self.content_pad_available_display_dimensions()
         if nrows is None:
             nrows = cv_height
         self.content_pad = curses.newpad(nrows, cv_width)
+        self.query_window = curses.newwin(self.QUERY_WINDOW_HEIGHT, cv_width, screen_height-self.QUERY_WINDOW_HEIGHT, 0)
 
         curses.use_default_colors()
 
@@ -269,7 +271,6 @@ class Display(object): # {{{2
         self.is_input_blocking = False
 
     def restart(self):
-        # self.stdscr.refresh()
         self.refresh()
 
     ### Book-keeping
@@ -277,12 +278,15 @@ class Display(object): # {{{2
     def screen_dimensions(self):
         return self.stdscr.getmaxyx()
 
+    def query_window_dimensions(self):
+        return self.query_window.getmaxyx()
+
     def content_pad_dimensions(self):
         return self.content_pad.getmaxyx()
 
     def content_pad_available_display_dimensions(self):
         screen_height, screen_width = self.screen_dimensions()
-        return screen_height - 3, screen_width
+        return screen_height - self.QUERY_WINDOW_HEIGHT - 1, screen_width
 
     def resize_content_pad(self, nrows):
         self.content_pad.resize(nrows, self.screen_dimensions()[1])
@@ -292,9 +296,9 @@ class Display(object): # {{{2
     def _set_input_blocking(self, is_blocking):
         self._is_input_blocking = is_blocking
         if self._is_input_blocking:
-            self.stdscr.nodelay(0)
+            self.query_window.nodelay(0)
         else:
-            self.stdscr.nodelay(1)
+            self.query_window.nodelay(1)
     is_input_blocking = property(_get_input_blocking, _set_input_blocking)
 
     def set_cursor(self, value):
@@ -310,20 +314,19 @@ class Display(object): # {{{2
     def error(self, message, erase=True):
         if erase:
             self.content_pad.erase()
-        height, width = self.screen_dimensions()
         self.write_status_bar(message, self.error_color, refresh=True)
-        self.stdscr.move(height - self.STATUS_BAR_OFFSET, min(len(message), self.screen_dimensions()[1]-1))
+        self.query_window.move(
+            self.QUERY_WINDOW_HEIGHT - self.STATUS_BAR_OFFSET, min(len(message), self.query_window()[1]-1))
         self.pause_for_keypress()
 
     def write_status_bar(self, s, color=None, refresh=True):
         if color is None:
             color = self.status_bar_color
-        height, width = self.screen_dimensions()
-        # self.stdscr.clrtoeol()
+        height, width = self.query_window_dimensions()
         padded_message = s.ljust(width-1)[:width-1]
-        self.stdscr.addstr(height - self.STATUS_BAR_OFFSET, 0, padded_message, color)
+        self.query_window.addstr(self.QUERY_WINDOW_HEIGHT - self.STATUS_BAR_OFFSET, 0, padded_message, color)
         if refresh:
-            self.stdscr.refresh()
+            self.query_window.refresh()
 
     ### Rendering (Content)
 
@@ -335,8 +338,9 @@ class Display(object): # {{{2
             whole_path_matching,
             search_path_info=None,
             ):
-        self.stdscr.erase()
+        self.content_pad.erase()
         self.render_content_items(items, focal_item_index)
+        self.query_window.erase()
         self.render_query(
                 query_str=query_str,
                 match_type=match_type,
@@ -402,7 +406,7 @@ class Display(object): # {{{2
             focal_item_index,
             search_path_info=None,
             ):
-        height, width = self.screen_dimensions()
+        height, width = self.query_window_dimensions()
         status_bar_components = []
         if match_type == "fuzzy":
             prompt = "? "
@@ -429,15 +433,16 @@ class Display(object): # {{{2
                 #     focal_item_index += 1
                 # status_bar += ("{} of {} entries (".format(focal_item_index, num_entries, truncate_front(search_path_info, remaining).rjust(remaining)
         status_bar = status_bar.ljust(width-1)[:width-1]
-        self.stdscr.addstr(height - self.STATUS_BAR_OFFSET, 0, status_bar, self.status_bar_color)
+        self.query_window.addstr(self.QUERY_WINDOW_HEIGHT - self.STATUS_BAR_OFFSET, 0, status_bar, self.status_bar_color)
         q = prompt + query_str
         self.query_length = len(q)
-        self.stdscr.addstr(height - self.QUERY_ROW_OFFSET, 0, q, self.prompt_color)
+        self.query_window.addstr(self.QUERY_WINDOW_HEIGHT - self.QUERY_ROW_OFFSET, 0, q, self.prompt_color)
 
     ### Displaying
 
     def clear(self):
-        self.stdscr.erase()
+        self.query_window.erase()
+        self.content_pad.erase()
 
     def clear_content(self):
         self.content_pad.erase()
@@ -446,7 +451,7 @@ class Display(object): # {{{2
         try:
             content_height, content_width = self.content_pad_dimensions()
             screen_height, screen_width = self.screen_dimensions()
-            self.stdscr.noutrefresh()
+            self.query_window.noutrefresh()
             num_content_items = len(self.content_items)
             if not num_content_items:
                 self.content_pad.noutrefresh(
@@ -454,13 +459,13 @@ class Display(object): # {{{2
                         0,
                         0,
                         0,
-                        screen_height-3,
+                        screen_height-self.QUERY_WINDOW_HEIGHT - 1,
                         screen_width,
                         )
             else:
                 available_height = self.content_pad_available_display_dimensions()[0]
                 if num_content_items < available_height:
-                    screen_top = screen_height - num_content_items - 2
+                    screen_top = screen_height - num_content_items - (self.QUERY_WINDOW_HEIGHT)
                     content_top = content_height - num_content_items
                 else:
                     screen_top = 0
@@ -480,7 +485,7 @@ class Display(object): # {{{2
                         0,
                         screen_top,
                         0,
-                        screen_height-3,
+                        screen_height-self.QUERY_WINDOW_HEIGHT - 1,
                         screen_width,
                         )
             curses.doupdate()
@@ -496,7 +501,7 @@ class Display(object): # {{{2
             curses.noecho()
         elif echo is True:
             curses.echo()
-        ch = self.stdscr.getch()
+        ch = self.query_window.getch()
         ### FOLLOWING HACK NOT NEEDED ANY MORE, DUE TO FOLLOWING APPROACH::
         ###
         ###    with os.fdopen(0, 'r') as src:
@@ -549,8 +554,7 @@ class Display(object): # {{{2
             return self.KEYCODES.get(ch_value, None)
 
     def get_query_keycode(self, echo=False):
-        height, width = self.screen_dimensions()
-        self.stdscr.move(height - self.QUERY_ROW_OFFSET, self.query_length)
+        self.query_window.move(self.QUERY_WINDOW_HEIGHT - self.QUERY_ROW_OFFSET, self.query_length)
         cursor = self.set_cursor(2)
         keycode = self.get_keycode(blocking=True, echo=echo)
         cursor = self.set_cursor(cursor)
