@@ -92,20 +92,22 @@ Then you can hit `<ENTER>` to open it for editing in an editor of your choice,
 as set the environmental variable `$FUZZYSNAKE_EDITOR` (if this is not defined,
 then `$EDITOR` will be used instead).
 
-You reset the search paths to the parent directory of each path by using the
-`<LEFT>` arrow key. In the normal file-selection mode, you can use the
-`<RIGHT>` arrow key to open (or, if an alterate action is specified, performat
-that action on) the selected file(s) without closing `FuzzySnake`. In
-directory-selection mode, the `<RIGHT>` arrow key will instead "drill down"
-into the currently selected path(s).
-
 Instead of opening the selected path in an editor, you can also execute a
 custom command on it using the '`-c`'/'`--execute-command`' option, or open the
 path in the type-specific system default application using the '`o`'/'`--open`'
 option. These are discussed in more detail below.
 
+You can move up to the parent directory or directories of the current search
+path(s) by using the `<LEFT>` arrow key or by typing `<CTRL-U>`. Conversely,
+you can "drill down" using the `<RIGHT>` arrow key or `<CTRL-D>`. In the normal
+file-selection mode, this will perform a "preview" action, opening the file or
+carrying out the alternate action specified by the '`-c`'/'`--execute-command`'
+option on the selected file *without* quitting `FuzzySnake`. In the directory
+selection mode, on the other hand, this will move the search path down into the
+current focal directory.
+
 If you decide that you do *not* want to follow through with any actions at all,
-you can hit '`<ESC>`' or '`<CTRL-C>`' at any time to cancel
+you can hit `<ESC>` or `<CTRL-C>` at any time to cancel
 `FuzzySnake` and return to the shell.
 
 Setting the Default Editor
@@ -125,8 +127,8 @@ If the '`$FUZZYSNAKE_EDITOR`' environmental variable is not set, then the value
 of '`$EDITOR`' is used instead. If this is not set, then '`vim`' is used, which
 is what everybody should be using anyway.
 
-Customizing the Match Mode
---------------------------
+Customizing the Match Expression Type: Fuzzy, Literal, Regular
+--------------------------------------------------------------
 If the fuzzy matching is too fuzzy for you, you can use strict literal matching
 by invoking `FuzzySnake` with the '`-l`' or '`--literal`' flag::
 
@@ -138,8 +140,8 @@ using the '`-e`' or '`--regexp`' flag::
     $ fz -e
 
 In the middle of the search, while reviewing the list of candidates, you can
-cycle through the different match modes by typing '`<CTRL-R`>' (similar to
-'`<CTRL-R>`' in `CtrlP <https://github.com/kien/ctrlp.vim>`_ for `Vim
+cycle through the different expression types by typing `<CTRL-E`>' (similar to
+`<CTRL-R>` in `CtrlP <https://github.com/kien/ctrlp.vim>`_ for `Vim
 <http://www.vim.org>`_ for toggling between fixed string and regular
 expression matching). The prompt will change to indicate the current match
 mode: '`?`' (fuzzy), '`=`' (literal), or '`%`' (regular expression).
@@ -162,8 +164,8 @@ components of the parent directory as well as the basename, then invoke
     $ fz -w
 
 When reviewing or filtering the list, you can switch back-and-forth between
-matching the whole path or just the basename by using '`<CTRL-W>`' (similar to
-'`<CTRL-D>`' in `CtrlP <https://github.com/kien/ctrlp.vim>`_ for `Vim
+matching the whole path or just the basename by using `<CTRL-W>` (similar to
+`<CTRL-D>` in `CtrlP <https://github.com/kien/ctrlp.vim>`_ for `Vim
 <http://www.vim.org>`_ toggling between full directory and filename path vs.
 filename only matching).
 
@@ -264,6 +266,13 @@ as an argument)::
 Higher numbers allow for deeper subdirectories to be visited::
 
     $ fz -r2 ~/projects/archives
+
+Changing the Search Directories
+-------------------------------
+
+You can move *up* a directory by using the `<RIGHT>` arrow key or typing
+`<CTRL-U>`. In directory search mode, you can move *down* the current focal by
+using the `<LEFT>` arrow key or typing `<CTRL-D>`.
 
 Simultaneously and Independently Matching Multiple Terms ('`AND`'-ing)
 ----------------------------------------------------------------------
