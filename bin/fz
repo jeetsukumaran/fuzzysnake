@@ -1086,11 +1086,14 @@ class DirectorySource(object): # {{{2
             # hidden_dir_pattern = r"^\.[^.{s}]".format(s=os.path.sep)
             # hidden_dir_pattern = r"{s}\.[^.]".format(s=os.path.sep)
             # hidden_dir_pattern = r"^\./\.cac".format(s=os.path.sep)
-            hidden_dir_pattern = r"(^(\.{s})?\.[^.{s}]|{s}\.[^.])".format(s=os.path.sep)
+            hidden_dir_patterns = [
+                                  r"^(\.{s})?\.[^.{s}]".format(s=os.path.sep),
+                                  r"{s}\.[^.]".format(s=os.path.sep),
+                                 ]
             try:
-                dirs_to_exclude.append(hidden_dir_pattern)
+                dirs_to_exclude.extend(hidden_dir_patterns)
             except AttributeError:
-                dirs_to_exclude = [hidden_dir_pattern]
+                dirs_to_exclude = hidden_dir_patterns
             hidden_file_pattern = r"^\."
             try:
                 files_to_exclude.append(hidden_file_pattern)
@@ -1169,6 +1172,9 @@ class DirectorySource(object): # {{{2
                     self.git_exclude_filters.append(gief)
             if DirectorySource.dot_dirs_ignore_pattern.match(dirname):
                 continue
+            # if ".cache" in dirname:
+            #     xout = open("fuzzysnake-debug.txt", "w")
+            #     xout.write(self.dirs_to_exclude.pattern + "\n")
             if self.dirs_to_exclude is not None and self.dirs_to_exclude.match(dirname):
                 continue
             names = []
