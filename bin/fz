@@ -271,14 +271,20 @@ class VisualInterface(object): # {{{2
             pass
 
     def fill(self, window, color=None):
+        window.erase()
         height, width = window.getmaxyx()
         if color is None:
             color = 0
-        window.erase()
-        blank_line = " " * width
+        # window.erase()
+        blank_line = " " * (width)
         for row_idx in range(height):
-            window.addstr(0, row_idx, blank_line, color)
-
+            if row_idx == height - 1:
+                # weird curses bug:
+                #   http://stackoverflow.com/questions/7063128/last-character-of-a-window-in-python-curses0
+                #   "writing the last character of a window is impossible with curses, for historical reasons."
+                window.addstr(row_idx, 0, blank_line[:-1], color)
+            else:
+                window.addstr(row_idx, 0, blank_line, color)
 
     ### Input
 
@@ -846,6 +852,8 @@ class MessageWindow(VisualInterface): # {{{2
         self.vmargin = vmargin
         self.hmargin = hmargin
         self.message_buffer = None
+        self.available_height_start = 0 # height from top of screen that available height begins
+        self.available_width_start = 0  # width from left of screen that available wdith begins
         # self.setup()
 
     def __del__(self):
@@ -865,13 +873,13 @@ class MessageWindow(VisualInterface): # {{{2
         actual_available_width = self.available_width - (self.hmargin*2)
         self.view_height = min(max_rows, actual_available_height)
         self.view_width = min(max_cols, actual_available_width)
-        self.view_pos_top = max(0, int((actual_available_height-self.view_height)/2))
-        self.view_pos_left = max(0, int((actual_available_width-self.view_width)/2))
+        self.view_pos_top = max(0, int((actual_available_height-self.view_height)/2)+self.available_height_start)
+        self.view_pos_left = max(0, int((actual_available_width-self.view_width)/2)+self.available_width_start)
         self.view_y, self.view_x = 0, 0
-        self.message_buffer_height = max_rows + 1
-        self.message_buffer_width = max_cols + 1
+        self.message_buffer_height = max_rows
+        self.message_buffer_width = max_cols
         self.message_buffer = curses.newpad(self.message_buffer_height, self.message_buffer_width)
-        self.fill(color=self.color)
+        # self.fill(color=self.color)
 
     def render(self):
         if self.message_buffer is None:
@@ -893,8 +901,8 @@ class MessageWindow(VisualInterface): # {{{2
         VisualInterface.fill(self, window=self.message_buffer, color=color)
 
     def render_lines(self):
-        self.message_buffer.erase()
-        self.fill()
+        # self.message_buffer.erase()
+        self.fill(color=self.color)
         hpadding = " " * self.hpadding
         for line_idx, line in enumerate(self.message_lines):
             row_idx = line_idx + self.vpadding
@@ -907,7 +915,7 @@ class MessageWindow(VisualInterface): # {{{2
             self.message_buffer.addstr(
                     row_idx,
                     self.hpadding,
-                    line.ljust(self.message_buffer_width-(self.hpadding*2)),
+                    line.ljust(self.message_buffer_width-self.hpadding)[:self.message_buffer_width-self.hpadding],
                     self.color,
                     )
 
