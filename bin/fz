@@ -43,6 +43,7 @@ import re
 import itertools
 import collections
 import subprocess
+import textwrap
 try:
     from StringIO import StringIO # Python 2 legacy support: StringIO in this module is the one needed (not io)
 except ImportError:
@@ -228,7 +229,6 @@ class Display(object): # {{{2
         self.stdscr = stdscr
         self.content_pad = None
         self.content_vscroll_offset = 0
-        self._is_input_blocking = None
         self.start(nrows=nrows)
         self.query_length = 0
         self.content_limit = 1000
@@ -268,10 +268,12 @@ class Display(object): # {{{2
         curses.init_pair(8, curses.COLOR_YELLOW, curses.COLOR_RED)
         self.error_color = curses.color_pair(8) | curses.A_BOLD | curses.A_REVERSE
 
-        self.is_input_blocking = False
-
     def restart(self):
         self.refresh()
+
+    def abort(self, exit_arg):
+        self.stop()
+        sys.exit(exit_arg)
 
     ### Book-keeping
 
@@ -291,16 +293,6 @@ class Display(object): # {{{2
     def resize_content_pad(self, nrows):
         self.content_pad.resize(nrows, self.screen_dimensions()[1])
 
-    def _get_input_blocking(self):
-        return self._is_input_blocking
-    def _set_input_blocking(self, is_blocking):
-        self._is_input_blocking = is_blocking
-        if self._is_input_blocking:
-            self.query_window.nodelay(0)
-        else:
-            self.query_window.nodelay(1)
-    is_input_blocking = property(_get_input_blocking, _set_input_blocking)
-
     def set_cursor(self, value):
         if value is None:
             return
@@ -311,13 +303,113 @@ class Display(object): # {{{2
 
     ### Rendering (Framework)
 
-    def error(self, message, erase=True):
-        if erase:
-            self.content_pad.erase()
-        self.write_status_bar(message, self.error_color, refresh=True)
-        self.query_window.move(
-            self.QUERY_WINDOW_HEIGHT - self.STATUS_BAR_OFFSET, min(len(message), self.query_window_dimensions()[1]-1))
-        self.pause_for_keypress()
+    def message(self, message_lines, color=None, vpadding=0, hpadding=2):
+        # message_lines = []
+        # for y in range(100):
+        #     row = []
+        #     for x in range(100):
+        #         row.append("<y{},x{}>".format(y, x))
+        #     row = "|".join(row)
+        #     message_lines.append("0]" + row + "[$")
+
+        if color is None:
+            color = self.error_color
+        max_row_len = max(len(r) for r in message_lines)
+        max_rows = len(message_lines) + (vpadding * 2)
+        available_height, available_width = self.content_pad_available_display_dimensions()
+        available_height -= (vpadding * 2)
+        available_width -= (hpadding * 2)
+        view_height = min(max_rows, available_height-vpadding)
+        view_width = min(max_row_len + 2, available_width - hpadding)
+        view_pos_top = max(0, int((available_height-view_height)/2) + vpadding)
+        view_pos_left = max(0, int((available_width-view_width)/2) + hpadding)
+        view_y, view_x = 0, 0
+        message_buffer_height = max_rows
+        message_buffer_width = max_row_len + (hpadding * 2)
+        message_buffer = curses.newpad(message_buffer_height, message_buffer_width)
+        message_buffer.bkgdset(" ", color)
+        # message_buffer.scrollok(0)
+        def _message_buffer_refresh():
+            message_buffer.refresh(
+                    view_y,
+                    view_x,
+                    view_pos_top,
+                    view_pos_left,
+                    view_pos_top + view_height - 1,
+                    view_pos_left + view_width - 1,
+                    )
+
+        message_buffer.erase()
+        for line_idx, line in enumerate(message_lines):
+            message_buffer.addstr(line_idx + vpadding, hpadding, line.ljust(message_buffer_width-(hpadding*2)), color)
+
+        _message_buffer_refresh()
+
+        while True:
+            keycode = self.get_keycode(blocking=True, echo=False, focal_window=message_buffer)
+            if keycode is None:
+                continue
+            if keycode.name in self.CANCEL_KEYCODES_NAMES:
+                break
+            elif keycode.name == "UP" or keycode.name == "k":
+                view_y -= 1
+                if view_y < 0:
+                    view_y = 0
+            elif keycode.name == "DOWN" or keycode.name == "j":
+                if view_y + view_height < message_buffer_height:
+                    view_y += 1
+            elif keycode.name == "g":
+                view_y = 0
+            elif keycode.name == "G":
+                view_y = message_buffer_height - view_height
+            elif keycode.name == "LEFT" or keycode.name == "h":
+                view_x -= 1
+                if view_x < 0:
+                    view_x = 0
+            elif keycode.name == "RIGHT" or keycode.name == "l":
+                if view_x + view_width < message_buffer_width:
+                    view_x += 1
+            elif keycode.name == "0":
+                view_x = 0
+            elif keycode.name == "$":
+                view_x = message_buffer_width - view_width
+            _message_buffer_refresh()
+
+        # panel = curses.panel.new_panel(message_buffer)
+        message_buffer.erase()
+        _message_buffer_refresh()
+
+        # screen_height, screen_width = self.screen_dimensions()
+        # height = min(20, screen_height)
+        # if width < 20:
+        #     self.abort("Screen too small to continue")
+        # pos_y = min(screen_height, int(screen_height / 2) - int(height/2))
+        # pos_x = int(screen_width / 4)
+        # width = int(screen_width/2)
+        # message_buffer = curses.newwin(height, width, pos_y, pos_x)
+        # message_buffer.erase()
+        # message_buffer.box()
+        # message = message[:width-2]
+        # message_buffer.addstr(2, 2, message)
+        # message_buffer.refresh()
+        # # panel = curses.panel.new_panel(message_buffer)
+        # self.pause_for_keypress()
+        # message_buffer.erase()
+        # message_buffer.refresh()
+        # if actions == 0:
+        #     self.pause_for_keypress()
+        # else:
+        #     raise NotImplementedError
+
+    def error(self, message):
+        self.message(
+                message=message,
+                color=self.error_color)
+
+        # self.write_status_bar(message, self.error_color, refresh=True)
+        # self.query_window.move(
+        #     self.QUERY_WINDOW_HEIGHT - self.STATUS_BAR_OFFSET, min(len(message), self.query_window_dimensions()[1]-1))
+        # self.pause_for_keypress()
 
     def write_status_bar(self, s, color=None, refresh=True):
         if color is None:
@@ -494,14 +586,19 @@ class Display(object): # {{{2
 
     ### Input
 
-    def getch(self, blocking=None, echo=None):
+    def getch(self, blocking=None, echo=None, focal_window=None):
         # set state
-        self.is_input_blocking = blocking
+        if focal_window is None:
+            focal_window = self.query_window
+        if blocking:
+            focal_window.nodelay(0)
+        else:
+            focal_window.nodelay(1)
         if echo is False:
             curses.noecho()
         elif echo is True:
             curses.echo()
-        ch = self.query_window.getch()
+        ch = focal_window.getch()
         ### FOLLOWING HACK NOT NEEDED ANY MORE, DUE TO FOLLOWING APPROACH::
         ###
         ###    with os.fdopen(0, 'r') as src:
@@ -527,13 +624,13 @@ class Display(object): # {{{2
 
         # restore state
         if blocking:
-            self.is_input_blocking = False
+            focal_window.nodelay(1)
         if echo:
             curses.noecho()
         return ch
 
-    def get_keycode(self, blocking=True, echo=False):
-        ch_value = self.getch(blocking=blocking, echo=echo)
+    def get_keycode(self, blocking=True, echo=False, focal_window=None):
+        ch_value = self.getch(blocking=blocking, echo=echo, focal_window=focal_window)
         if ch_value == -1:
             return None
         elif ch_value == 27:
@@ -541,22 +638,24 @@ class Display(object): # {{{2
             # arrows
             # just escape? try non-blocking read to see if
             # any other characters
-            ch_value = self.getch(blocking=False, echo=echo)
+            ch_value = self.getch(blocking=False, echo=echo, focal_window=focal_window)
             if ch_value == -1:
                 # Nope: just escape
                 return self.KEYCODES[27]
             # other characters available
             # assuming arrow-key, we discard
             # the current and read the next
-            ch_value = self.getch(blocking=True, echo=echo)
+            ch_value = self.getch(blocking=True, echo=echo, focal_window=focal_window)
             return self.KEYCODES.get(-ch_value, None) # None if not handled
         else:
             return self.KEYCODES.get(ch_value, None)
 
-    def get_query_keycode(self, echo=False):
-        self.query_window.move(self.QUERY_WINDOW_HEIGHT - self.QUERY_ROW_OFFSET, self.query_length)
+    def get_query_keycode(self, echo=False, focal_window=None):
+        if focal_window is None:
+            focal_window = self.query_window
+        focal_window.move(self.QUERY_WINDOW_HEIGHT - self.QUERY_ROW_OFFSET, self.query_length)
         cursor = self.set_cursor(2)
-        keycode = self.get_keycode(blocking=True, echo=echo)
+        keycode = self.get_keycode(blocking=True, echo=echo, focal_window=focal_window)
         cursor = self.set_cursor(cursor)
         return keycode
 
@@ -910,8 +1009,8 @@ class Selector(object): # {{{2
                     if self.multiselection_mode:
                         for item in display_items:
                             item.is_selected = True
-                elif keycode.name == "CTRL-G":
-                    # <CTRL-G>: Invert selection
+                elif keycode.name == "NUL":
+                    # <CTRL-SPACE>: Invert selection
                     if self.multiselection_mode:
                         for item in display_items:
                             item.is_selected = not item.is_selected
@@ -928,6 +1027,8 @@ class Selector(object): # {{{2
                         current_query_chars.pop()
                         display_items = self.apply_query(current_query_chars, source_items)
                         focal_item_index = 0 # TODO: adjust this smartly
+                elif keycode.name == "q":
+                    self.display.message("hello")
                 elif not keycode.is_special:
                     current_query_chars.append(keycode.name)
                     display_items = self.apply_query(current_query_chars, source_items)
@@ -1375,14 +1476,14 @@ class Controller(object): # {{{2
                     self.args.search_paths = [os.path.normpath(os.path.relpath(new_dir))]
                     break
             else:
-                self.display.error("No valid sub-directories found in new search path(s)", erase=False)
+                self.display.error("No valid sub-directories found in new search path(s)")
                 return None, None
             items = self.scan_search_paths()
             return items, self.get_search_path_info()
         else:
             filepaths = [entry.filepath for entry in selected_items]
             if not filepaths:
-                self.display.error("No valid files found or selected", erase=False)
+                self.display.error("No valid files found or selected")
             else:
                 self.apply_action(filepaths, as_subprocess=True)
             return None, None
