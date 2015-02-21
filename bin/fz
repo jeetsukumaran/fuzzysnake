@@ -1462,14 +1462,14 @@ class Controller(object): # {{{2
                     self.args.search_paths = [os.path.normpath(os.path.relpath(new_dir))]
                     break
             else:
-                self.display.error("No valid sub-directories found in new search path(s)")
+                self.display.error("No valid sub-directories found in new search path(s)", erase=False)
                 return None, None
             items = self.scan_search_paths()
             return items, self.get_search_path_info()
         else:
             filepaths = [entry.filepath for entry in selected_items]
             if not filepaths:
-                self.display.error("No valid files found or selected")
+                self.display.error("No valid files found or selected", erase=False)
             else:
                 self.apply_action(filepaths, as_subprocess=True)
             return None, None
