@@ -563,6 +563,8 @@ class Display(object): # {{{2
     def pause_for_keypress(self):
         cursor = self.set_cursor(2)
         ch = self.getch(blocking=True)
+        while ch != -1:
+            ch = self.getch(blocking=False)
         self.set_cursor(cursor)
         return ch
 
