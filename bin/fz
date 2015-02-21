@@ -806,14 +806,12 @@ class Selector(object): # {{{2
     def __init__(self,
             display,
             ranker,
-            term_separator=';',
             whole_path_matching=False,
             match_type="fuzzy",
             multiselection_mode=True,
             status_bar_extra_info=None):
         self.display = display
         self.ranker = ranker
-        self.term_separator = term_separator
         self.whole_path_matching = whole_path_matching
         self.match_type = match_type
         self.multiselection_mode = multiselection_mode
@@ -823,7 +821,6 @@ class Selector(object): # {{{2
         new_heap = []
         ranker = self.ranker(
                 query_str="".join(query_chars),
-                term_separator=self.term_separator,
                 whole_path_matching=self.whole_path_matching,
                 match_type=self.match_type)
         for w, item, ms, me in cur_heap:
@@ -1332,16 +1329,11 @@ class FuzzyRanker(object): # {{{2
 
     def __init__(self,
             query_str,
-            term_separator=';',
             whole_path_matching=False,
             match_type="fuzzy"):
-        self.term_separator = term_separator
         self.whole_path_matching = whole_path_matching
         self.weight_f = lambda f: f.dirname.count(os.sep) ** 0.5
-        if self.term_separator:
-            self.query_strings = query_str.split(self.term_separator)
-        else:
-            self.query_strings = [query_str]
+        self.query_strings = [s for s in re.split("[&;]", query_str) if s]
         self.match_type = match_type
 
     def rank(self, item):
@@ -1567,7 +1559,6 @@ class Controller(object): # {{{2
         selector = Selector(
                 display=self.display,
                 ranker=ranker,
-                term_separator=self.args.term_separator,
                 whole_path_matching=self.args.whole_path_match,
                 match_type=self.args.match_type,
                 multiselection_mode=self.args.multiselection_mode,
@@ -1641,18 +1632,18 @@ def parse_cli_args():  #{{{2
             "default, matching is agains the *basename* only. "
             "Use `<CTRL-W>` to toggle between whole path and basename matching "
             "during the search.")
-    query_options_section.add_argument(
-            "-t", "--term-separator",
-            dest="term_separator",
-            default=";",
-            help=
-            "Specify the token to be used to separate multiple search "
-            "terms in the query expression. Defaults to '%(default)s'. "
-            "If multiple search terms are specified, a name has to "
-            "independently match every search term. Thus, if '%(default)s' "
-            "is given as the separator token, and 'foo%(default)sbar' is "
-            "typed as a query pattern, then names have match both 'foo'"
-            "AND 'bar'.")
+    # query_options_section.add_argument(
+    #         "-t", "--term-separator",
+    #         dest="term_separator",
+    #         default=";",
+    #         help=
+    #         "Specify the token to be used to separate multiple search "
+    #         "terms in the query expression. Defaults to '%(default)s'. "
+    #         "If multiple search terms are specified, a name has to "
+    #         "independently match every search term. Thus, if '%(default)s' "
+    #         "is given as the separator token, and 'foo%(default)sbar' is "
+    #         "typed as a query pattern, then names have match both 'foo'"
+    #         "AND 'bar'.")
     match_type_section = parser.add_argument_group("Match Mode Options",
             "The following flags set the initial matching mode to be used. "
             "You can cycle through match modes during a live search "
