@@ -876,12 +876,15 @@ class Selector(object): # {{{2
                 suppress_rerender = False
                 if keycode.name == "RIGHT" or keycode.name == "CTRL-D":
                     focal_item = display_items[focal_item_index]
-                    selected_items = self._extract_selected_from_display_items(
-                            display_items=display_items,
-                            focal_item_index=focal_item_index)
-                    raise Selector.DirectoryDownEventException(
-                        focal_item=focal_item,
-                        selected_items=selected_items)
+                    if display_items and focal_item_index <= len(display_items):
+                        selected_items = self._extract_selected_from_display_items(
+                                display_items=display_items,
+                                focal_item_index=focal_item_index)
+                        raise Selector.DirectoryDownEventException(
+                            focal_item=focal_item,
+                            selected_items=selected_items)
+                    else:
+                        suppress_rerender = True
                 elif keycode.name == "LEFT" or keycode.name == "CTRL-U":
                     raise Selector.DirectoryUpEventException
                 elif keycode.name == "CTRL-W":
@@ -938,9 +941,12 @@ class Selector(object): # {{{2
                         for item in display_items:
                             item.is_selected = not item.is_selected
                 elif keycode.name == "CTRL-J" or keycode.name == "CTRL-M":
-                    return self._extract_selected_from_display_items(
-                            display_items=display_items,
-                            focal_item_index=focal_item_index)
+                    if display_items and focal_item_index <= len(display_items):
+                        return self._extract_selected_from_display_items(
+                                display_items=display_items,
+                                focal_item_index=focal_item_index)
+                    else:
+                        suppress_rerender = True
                 elif keycode.name == "CTRL-H" or keycode.name == "DEL":
                     # Delete/backspace
                     if current_query_chars:
@@ -981,11 +987,14 @@ class Selector(object): # {{{2
                             )
 
     def _extract_selected_from_display_items(self, display_items, focal_item_index):
-        if self.multiselection_mode:
-            display_items[focal_item_index].is_selected = True
-            return [item for item in display_items if item.is_selected]
+        if display_items and focal_item_index <= len(display_items):
+            if self.multiselection_mode:
+                display_items[focal_item_index].is_selected = True
+                return [item for item in display_items if item.is_selected]
+            else:
+                return [display_items[focal_item_index]]
         else:
-            return [display_items[focal_item_index]]
+            return []
 
     # def _extract_selected_from_heap(self, heap, focal_item_index):
     #     if self.multiselection_mode:
