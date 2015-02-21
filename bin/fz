@@ -863,21 +863,21 @@ class Selector(object): # {{{2
                 focal_item_index = self.display.page_down(focal_item_index)
             elif keycode.name == "LEFT" or keycode.name == "CTRL-U":
                 if self.path_up_fn:
-                    source_items, search_path_info = self.path_up_fn()
-                    if source_items is not None:
+                    new_items, search_path_info = self.path_up_fn()
+                    if new_items is not None:
                         self.search_path_info = search_path_info
-                        raise Selector.ResetSourcesException(source_items=source_items)
+                        raise Selector.ResetSourcesException(source_items=new_items)
             elif keycode.name == "RIGHT" or keycode.name == "CTRL-D":
                 if self.path_down_fn and display_items and focal_item_index < len(display_items):
                     focal_item = display_items[focal_item_index]
                     selected_items = self._extract_selected_from_display_items(
                             display_items=display_items,
                             focal_item_index=focal_item_index)
-                    source_items, search_path_info = self.path_down_fn(focal_item=focal_item,
+                    new_items, search_path_info = self.path_down_fn(focal_item=focal_item,
                             selected_items=selected_items)
-                    if source_items is not None:
+                    if new_items is not None:
                         self.search_path_info = search_path_info
-                        raise Selector.ResetSourcesException(source_items=source_items)
+                        raise Selector.ResetSourcesException(source_items=new_items)
             else:
                 # following all require full re-rendering
                 suppress_rerender = False
