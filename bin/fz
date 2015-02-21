@@ -402,13 +402,13 @@ class Display(object): # {{{2
         status_bar_components = []
         if match_type == "fuzzy":
             prompt = "? "
-            status_bar_components.append("[^R] expression: fuzzy  ")
+            status_bar_components.append("[^E] expression: fuzzy  ")
         elif match_type == "literal":
             prompt = "= "
-            status_bar_components.append("[^R] expression: literal")
+            status_bar_components.append("[^E] expression: literal")
         elif match_type == "regexp":
             prompt = "% "
-            status_bar_components.append("[^R] expression: regular")
+            status_bar_components.append("[^E] expression: regular")
         if whole_path_matching:
             status_bar_components.append("[^W] match: whole path")
         else:
@@ -896,7 +896,7 @@ class Selector(object): # {{{2
                     # <CTRL-W>: Cycle whole-path vs. basename matching
                     self.whole_path_matching = not self.whole_path_matching
                     current_heaps = self._reset_current_search(current_query_chars, current_heaps)
-                elif keycode.name == "CTRL-R":
+                elif keycode.name == "CTRL-E":
                     # <CTRL-R>: Cycle matching-modes
                     if self.match_type == "literal":
                         self.match_type = "regexp"
@@ -1083,10 +1083,10 @@ class DirectorySource(object): # {{{2
         if not self.include_hidden:
             # hidden_dir_pattern = r".*{s}\.[^{s}]".format(s=os.path.sep)
             # hidden_dir_pattern = r"^.*{s}\.[^.{s}][^{s}]+$".format(s=os.path.sep)
-            hidden_dir_pattern = r"(^(\.{s})?\.[^.{s}]|{s}\.[^.])".format(s=os.path.sep)
             # hidden_dir_pattern = r"^\.[^.{s}]".format(s=os.path.sep)
             # hidden_dir_pattern = r"{s}\.[^.]".format(s=os.path.sep)
             # hidden_dir_pattern = r"^\./\.cac".format(s=os.path.sep)
+            hidden_dir_pattern = r"(^(\.{s})?\.[^.{s}]|{s}\.[^.])".format(s=os.path.sep)
             try:
                 dirs_to_exclude.append(hidden_dir_pattern)
             except AttributeError:
