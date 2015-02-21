@@ -346,7 +346,7 @@ class Display(object): # {{{2
             hc = list(heap)
             current_index = 0
             while hc:
-                score, item = heapq.heappop(hc)
+                score, item, match_start, match_end = heapq.heappop(hc)
                 self.content_items.append(item)
                 try:
                     self.render_content_item(current_index, item, current_index==focal_item_index)
@@ -819,13 +819,13 @@ class Selector(object): # {{{2
         self.status_bar_extra_info = status_bar_extra_info
 
     def _new_heap(self, query_chars, cur_heap):
-        newHeap = []
+        new_heap = []
         ranker = self.ranker(
                 query_str="".join(query_chars),
                 term_separator=self.term_separator,
                 whole_path_matching=self.whole_path_matching,
                 match_type=self.match_type)
-        for w, item in cur_heap:
+        for w, item, ms, me in cur_heap:
             item.whole_path_matching = self.whole_path_matching # needs to be updated here
             try:
                 score, match_start, match_end = ranker.rank(item)
@@ -835,13 +835,13 @@ class Selector(object): # {{{2
                 item.score = score
                 item.match_start = match_start
                 item.match_end = match_end
-                heapq.heappush(newHeap, (score, item))
+                heapq.heappush(new_heap, (score, item, match_start, match_end))
             else:
                 item.score = 0
                 item.match_start = 0
                 item.match_end = 0
                 item.is_selected = False
-        return newHeap
+        return new_heap
 
     def _reset_search(self, current_query_chars, current_heaps):
         current_heaps = current_heaps[:1]
@@ -921,19 +921,19 @@ class Selector(object): # {{{2
                 elif keycode.name == "CTRL-X":
                     # <CTRL-X>: Cancel all in multiselection mode; simply consume character otherwise
                     if self.multiselection_mode:
-                        # for w, item in current_heaps[-1]:
+                        # for w, item, ms, me in current_heaps[-1]:
                         for item in display_items:
                             item.is_selected = False
                 elif keycode.name == "CTRL-A":
                     # <CTRL-A>: Mark all in multiselection mode; simply consume character otherwise
                     if self.multiselection_mode:
-                        # for w, item in current_heaps[-1]:
+                        # for w, item, ms, me in current_heaps[-1]:
                         for item in display_items:
                             item.is_selected = True
                 elif keycode.name == "CTRL-G":
                     # <CTRL-G>: Invert selection
                     if self.multiselection_mode:
-                        # for w, item in current_heaps[-1]:
+                        # for w, item, ms, me in current_heaps[-1]:
                         for item in display_items:
                             item.is_selected = not item.is_selected
                 elif keycode.name == "CTRL-J" or keycode.name == "CTRL-M":
@@ -945,15 +945,30 @@ class Selector(object): # {{{2
                     if current_query_chars:
                         current_query_chars.pop()
                         current_heaps.pop()
+                        # restore match boundaries
+                        try:
+                            for score, item, match_start, match_end in current_heaps[-1]:
+                                # ensure same search regime, so saved search can be reused
+                                assert item.whole_path_matching is self.whole_path_matching
+                                item.score = score
+                                item.match_start = match_start
+                                item.match_end = match_end
+                        except AssertionError:
+                            # different search regime: need to rebuild old heap
+                            current_heaps.pop()
+                            current_heaps.append(self._new_heap(current_query_chars, current_heaps[-1]))
                         focal_item_index = 0 # TODO: adjust this smartly
                 elif not keycode.is_special:
                     # normal char
-                    try:
-                        current_query_chars.append(keycode.name)
-                        current_heaps.append(self._new_heap(current_query_chars, current_heaps[-1]))
-                        focal_item_index = 0 # TODO: adjust this smartly
-                    except ValueError:
-                        pass
+                    # try:
+                    #     current_query_chars.append(keycode.name)
+                    #     current_heaps.append(self._new_heap(current_query_chars, current_heaps[-1]))
+                    #     focal_item_index = 0 # TODO: adjust this smartly
+                    # except ValueError:
+                    #     pass
+                    current_query_chars.append(keycode.name)
+                    current_heaps.append(self._new_heap(current_query_chars, current_heaps[-1]))
+                    focal_item_index = 0 # TODO: adjust this smartly
                 else:
                     # not supported
                     suppress_rerender = True
@@ -971,34 +986,34 @@ class Selector(object): # {{{2
         else:
             return [display_items[focal_item_index]]
 
-    def _extract_selected_from_heap(self, heap, focal_item_index):
-        if self.multiselection_mode:
-            return self._extract_multiselected_from_heap(
-                    heap=heap,
-                    focal_item_index=focal_item_index)
-        else:
-            return self._extract_focal_item_from_heap(
-                    heap=heap,
-                    focal_item_index=focal_item_index)
+    # def _extract_selected_from_heap(self, heap, focal_item_index):
+    #     if self.multiselection_mode:
+    #         return self._extract_multiselected_from_heap(
+    #                 heap=heap,
+    #                 focal_item_index=focal_item_index)
+    #     else:
+    #         return self._extract_focal_item_from_heap(
+    #                 heap=heap,
+    #                 focal_item_index=focal_item_index)
 
-    def _extract_multiselected_from_heap(self, heap, focal_item_index):
-        selected_items = []
-        index = 0
-        while heap:
-            score, item = heapq.heappop(heap)
-            if item.is_selected or index == focal_item_index:
-                selected_items.append(item)
-            index += 1
-        return selected_items
+    # def _extract_multiselected_from_heap(self, heap, focal_item_index):
+    #     selected_items = []
+    #     index = 0
+    #     while heap:
+    #         score, item, match_start, match_end = heapq.heappop(heap)
+    #         if item.is_selected or index == focal_item_index:
+    #             selected_items.append(item)
+    #         index += 1
+    #     return selected_items
 
-    def _extract_focal_item_from_heap(self, heap, focal_item_index):
-        # return [heap[focal_item_index][1]]
-        while focal_item_index:
-            if not heap:
-                break
-            heapq.heappop(heap)
-            focal_item_index -= 1
-        return [heap[0][1]] if heap else []
+    # def _extract_focal_item_from_heap(self, heap, focal_item_index):
+    #     # return [heap[focal_item_index][1]]
+    #     while focal_item_index:
+    #         if not heap:
+    #             break
+    #         heapq.heappop(heap)
+    #         focal_item_index -= 1
+    #     return [heap[0][1]] if heap else []
 
     def render(self, heap, focal_item_index, query_chars):
         return self.display.render_main(
@@ -1016,7 +1031,8 @@ class Selector(object): # {{{2
             directory_down_event_handler=None):
         while True:
             try:
-                heap = [(i.score, i) for i in items]
+                # heap = [(i.score, i, i.match_start, i.match_end) for i in items]
+                heap = [(i.score, i, 0, 0) for i in items]
                 heap.sort()
                 display_items = self.render(
                         heap=heap,
