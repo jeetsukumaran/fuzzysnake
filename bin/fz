@@ -844,8 +844,6 @@ class Selector(object): # {{{2
                 query_chars=current_query_chars,
                 )
         while True:
-            # self.output.window.timeout(-1)
-            # keycode = self.display.get_keycode(blocking=True, echo=False)
             keycode = self.display.get_query_keycode(echo=False)
             if keycode is None:
                 continue
@@ -992,11 +990,6 @@ class DirectorySource(object): # {{{2
             self.target_filename_pattern = re.compile("(" + "|".join(target_filename_patterns) + ")")
         self.include_hidden = include_hidden
         if not self.include_hidden:
-            # hidden_dir_pattern = r".*{s}\.[^{s}]".format(s=os.path.sep)
-            # hidden_dir_pattern = r"^.*{s}\.[^.{s}][^{s}]+$".format(s=os.path.sep)
-            # hidden_dir_pattern = r"^\.[^.{s}]".format(s=os.path.sep)
-            # hidden_dir_pattern = r"{s}\.[^.]".format(s=os.path.sep)
-            # hidden_dir_pattern = r"^\./\.cac".format(s=os.path.sep)
             hidden_dir_patterns = [
                                   r"^(\.{s})?\.[^.{s}]".format(s=os.path.sep),
                                   r"{s}\.[^.]".format(s=os.path.sep),
@@ -1066,7 +1059,6 @@ class DirectorySource(object): # {{{2
         for search_idx, (dirname, dirs, filenames) in enumerate(walk(start_dir)):
             if self.display.check_for_cancel():
                 raise KeyboardInterrupt()
-            # dirname = os.path.normpath(dirname)
             total_items_scanned += (1 + len(dirs) + len(filenames))
             if search_idx % 100 == 0:
                 progress.update("Scanning: found {} out of {} names".format(len(results), total_items_scanned))
@@ -1083,9 +1075,6 @@ class DirectorySource(object): # {{{2
                     self.git_exclude_filters.append(gief)
             if DirectorySource.dot_dirs_ignore_pattern.match(dirname):
                 continue
-            # if ".cache" in dirname:
-            #     xout = open("fuzzysnake-debug.txt", "w")
-            #     xout.write(self.dirs_to_exclude.pattern + "\n")
             if self.dirs_to_exclude is not None and self.dirs_to_exclude.match(dirname):
                 continue
             names = []
