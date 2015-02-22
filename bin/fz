@@ -466,6 +466,8 @@ class Display(VisualInterface): # {{{2
                 hpadding=hpadding,
                 )
         key_code = message_window.show()
+        message_window.teardown()
+        self.refresh() # refresh needs to be called after teardown
         return key_code
 
     def error(self, message):
@@ -479,7 +481,6 @@ class Display(VisualInterface): # {{{2
                 vpadding=1,
                 hpadding=2,
                 )
-        self.refresh()
         return keycode
 
     def write_status_bar(self, s, color=None, refresh=True):
