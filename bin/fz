@@ -515,6 +515,13 @@ class Display(VisualInterface): # {{{2
                 )
         return keycode
 
+    def status_bar_error_message(self, message):
+        esb = StatusBarMessageWindow(stdscr=self.stdscr, color=self.error_color)
+        esb.write(message)
+        keycode = self.pause_for_keypress()
+        esb = None
+        self.status_bar_window.refresh()
+
     ### Rendering (Content)
 
     def render_main(self,
@@ -1756,7 +1763,7 @@ class Controller(object): # {{{2
             self.args.search_paths = [os.path.normpath(os.path.relpath(new_dir))]
             items = self.scan_search_paths()
             if not items:
-                self.display.error("No valid sub-directories available under selected path")
+                self.display.status_bar_error_message("No non-hidden/non-ignored sub-directories available under selected path")
                 self.args.search_paths = old_search_paths
                 return None, None
             else:
