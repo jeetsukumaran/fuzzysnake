@@ -425,6 +425,7 @@ class Display(VisualInterface): # {{{2
                 "literal": "= ",
                 "reg-exp": "% ",
         }
+        self.content_buffer_allocation_failure_extended_message = False
         self.start()
 
     def start(self):
@@ -444,7 +445,8 @@ class Display(VisualInterface): # {{{2
         try:
             self.content_buffer = curses.newpad(nrows, self.screen_dimensions()[1])
         except curses.error:
-            self.content_buffer_allocation_failure(nrows)
+            pass ### REMOVE-2015-02-22
+            # self.content_buffer_allocation_failure(nrows)
         if fill:
             self.fill_content_buffer()
         return self.content_buffer
@@ -515,22 +517,27 @@ class Display(VisualInterface): # {{{2
                 )
         return keycode
 
-    def status_bar_message(self, message, color=None):
+    def status_bar_message(self, message, color=None, blocking=True):
         if color is None:
             color = self.status_bar_color
         esb = StatusBarMessageWindow(stdscr=self.stdscr, color=color)
         esb.write(message)
-        keycode = self.pause_for_keypress()
-        esb = None
-        self.status_bar_window.refresh()
-        return keycode
+        if blocking:
+            keycode = self.pause_for_keypress()
+            esb = None
+            self.status_bar_window.refresh()
+        return esb
 
-    def status_bar_error_message(self, message):
-        return self.status_bar_message(message=message, color=self.error_color)
+    def status_bar_error_message(self, message, blocking=True):
+        return self.status_bar_message(
+                message=message,
+                color=self.error_color,
+                blocking=blocking,
+                )
 
     ### Rendering (Content)
 
-    def write_main(self,
+    def write_all(self,
             items,
             focal_item_index,
             query_str,
@@ -554,7 +561,8 @@ class Display(VisualInterface): # {{{2
         self.content_items = items
         if self.content_items:
             if len(self.content_items) > self.content_buffer_dimensions()[0]:
-                self.new_content_buffer(len(self.content_items))
+                # self.new_content_buffer(len(self.content_items))
+                self.resize_content_buffer(len(self.content_items))
             for current_idx, item in enumerate(self.content_items):
                 try:
                     self.write_content_item(current_idx, item, current_idx==focal_item_index)
@@ -650,7 +658,29 @@ class Display(VisualInterface): # {{{2
             num_content_items = len(self.content_items)
             content_height, content_width = self.content_buffer_dimensions()
             if content_height < 0:
-                self.content_buffer_allocation_failure(num_content_items)
+                if self.content_buffer_allocation_failure_extended_message:
+                    self.error((
+                        "Content buffer allocation failure: {} entries. ".format(num_content_items),
+                        "",
+                        "Search is still available and active, but entries will not",
+                        "be displayed until a buffer can be created. Begin typing a",
+                        "query to filter items until the number of items is ",
+                        "sufficiently reduced to allow for display.",
+                        "",
+                        "Alternatively, you can rerun FuzzySnake using more focused",
+                        "search conditions.",
+                        "",
+                        "                          [OK]                            ",
+                        ))
+                    self.content_buffer_allocation_failure_extended_message = False
+                self.status_bar_message(
+                        "{} undisplayed items (filter using query to reduce number)".format(num_content_items),
+                        blocking=False,
+                        color=self.error_color,
+                        )
+                self.content_buffer.erase()
+                self.resize_content_buffer(screen_height)
+                # self.content_buffer_allocation_failure(num_content_items)
             self.status_bar_window.refresh()
             self.query_window.noutrefresh()
             if not num_content_items:
@@ -696,7 +726,8 @@ class Display(VisualInterface): # {{{2
                         )
             curses.doupdate()
         except Exception as e:
-            pass
+            raise
+            # pass
 
     ### Content Interaction
 
@@ -1191,7 +1222,7 @@ class Selector(object): # {{{2
     def _loop(self, source_items):
         current_query_chars = []
         focal_item_index = 0
-        display_items = self.write(
+        display_items = self.redisplay_all(
                 items=source_items,
                 focal_item_index=focal_item_index,
                 query_chars=current_query_chars,
@@ -1220,7 +1251,7 @@ class Selector(object): # {{{2
                         raise Selector.ResetSourcesException(source_items=new_items)
                     else:
                         # query status bar might be over-written with message
-                        self.rewrite_status_bar()
+                        self.redisplay_status_bar()
             elif keycode.name == "RIGHT" or keycode.name == "CTRL-D":
                 if self.path_down_fn and display_items and focal_item_index < len(display_items):
                     focal_item = display_items[focal_item_index]
@@ -1234,7 +1265,7 @@ class Selector(object): # {{{2
                         raise Selector.ResetSourcesException(source_items=new_items)
                     else:
                         # query status bar might be over-written with message
-                        self.rewrite_status_bar()
+                        self.redisplay_status_bar()
             else:
                 # following all require full re-writing
                 suppress_rewrite = False
@@ -1305,7 +1336,7 @@ class Selector(object): # {{{2
                     # do nothing: just re-write
                     # pass
                     self.display.stdscr.refresh()
-                    display_items = self.write(
+                    display_items = self.redisplay_all(
                             items=display_items,
                             focal_item_index=focal_item_index,
                             query_chars=current_query_chars,
@@ -1318,7 +1349,7 @@ class Selector(object): # {{{2
                     # not supported
                     suppress_rewrite = True
                 if not suppress_rewrite:
-                    display_items = self.write(
+                    display_items = self.redisplay_all(
                             items=display_items,
                             focal_item_index=focal_item_index,
                             query_chars=current_query_chars,
@@ -1334,8 +1365,8 @@ class Selector(object): # {{{2
         else:
             return []
 
-    def write(self, items, focal_item_index, query_chars):
-        display_items = self.display.write_main(
+    def redisplay_all(self, items, focal_item_index, query_chars):
+        display_items = self.display.write_all(
                 items=items,
                 focal_item_index=focal_item_index,
                 query_str="".join(query_chars),
@@ -1345,7 +1376,7 @@ class Selector(object): # {{{2
                 )
         return display_items
 
-    def rewrite_status_bar(self):
+    def redisplay_status_bar(self):
         return self.display.write_status_bar(
                 match_type=self.match_type,
                 whole_path_matching=self.whole_path_matching,
@@ -1376,7 +1407,7 @@ class DirectorySource(object): # {{{2
             files_to_exclude=None,
             filter_for_glob_names=None,
             max_recursion_depth=None,
-            max_items=None,
+            max_content_items=None,
             ):
         self.display = display
         self.ignore_directories = ignore_directories
@@ -1419,7 +1450,7 @@ class DirectorySource(object): # {{{2
             dot_dirs_ignore_pattern = "(" + "|".join(dot_dirs_to_ignore) + ")"
             DirectorySource.dot_dirs_ignore_pattern = re.compile(dot_dirs_ignore_pattern)
         self.max_recursion_depth = max_recursion_depth
-        self.max_items = max_items
+        self.max_content_items = max_content_items
         self.filters = []
         self.git_exclude_filters = []
 
@@ -1518,8 +1549,8 @@ class DirectorySource(object): # {{{2
                             match_end=0,
                             whole_path_matching=False)
                     results.append(entry)
-                    if self.max_items and len(results) > self.max_items:
-                        self.display.status_bar_error_message("Item limit reached: {}".format(self.max_items))
+                    if self.max_content_items and len(results) > self.max_content_items:
+                        self.display.status_bar_error_message("Item limit reached: {}".format(self.max_content_items), blocking=True)
                         raise KeyboardInterrupt()
             # have to delete the names manually
             if fltr is not None:
@@ -1747,7 +1778,7 @@ class Controller(object): # {{{2
                             files_to_exclude=self.args.files_to_exclude,
                             filter_for_glob_names=self.args.filter_for_glob_names,
                             max_recursion_depth=self.args.max_recursion_depth,
-                            max_items=self.args.max_items)
+                            max_content_items=self.args.max_content_items)
                     path = os.path.expandvars(os.path.expanduser(path))
                     ds.fetch(start_dir=path,
                             results=items,
@@ -1769,7 +1800,7 @@ class Controller(object): # {{{2
             self.args.search_paths = [os.path.normpath(os.path.relpath(new_dir))]
             items = self.scan_search_paths()
             if not items:
-                self.display.status_bar_error_message("No non-hidden/non-ignored sub-directories available under selected path")
+                self.display.status_bar_error_message("No non-hidden/non-ignored sub-directories available under selected path", blocking=True)
                 self.args.search_paths = old_search_paths
                 return None, None
             else:
@@ -1920,7 +1951,7 @@ def parse_cli_args():  #{{{2
             "only the top-level directory is searched.")
     search_options_section.add_argument(
             "--item-limit", "--max-items",
-            dest="max_items",
+            dest="max_content_items",
             type=int,
             help="Maximum number of items to find. If 0, then no limit.",
             )
