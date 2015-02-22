@@ -209,6 +209,7 @@ class VisualInterface(object): # {{{2
     KEYCODES[-66] = KeyCode(name="DOWN", is_special=True)
     KEYCODES[-67] = KeyCode(name="RIGHT", is_special=True)
     KEYCODES[-68] = KeyCode(name="LEFT", is_special=True)
+    KEYCODES[-80] = KeyCode(name="F1", is_special=True)
 
     CANCEL_KEYCODES_NAMES = set(["ESC", "FS", "CTRL-C"])
     # }}}3
@@ -448,15 +449,15 @@ class Display(VisualInterface): # {{{2
 
     def message(self, message_lines, color=None, vpadding=0, hpadding=2):
 
-        # ### FOR DEBUGGING ###
+        ### FOR DEBUGGING ###
         # message_lines = []
-        # for y in range(100):
+        # for y in range(300):
         #     row = []
         #     for x in range(100):
         #         row.append("<y{},x{}>".format(y, x))
         #     row = "|".join(row)
         #     message_lines.append("0]" + row + "[$")
-        # ### FOR DEBUGGING ###
+        ### FOR DEBUGGING ###
 
         available_height, available_width = self.content_buffer_available_display_dimensions()
         message_window = MessageWindow(
@@ -748,6 +749,8 @@ class MessageWindow(VisualInterface): # {{{2
         self.available_height = available_height
         self.available_width = available_width
         self.color = color
+        if self.color is None:
+            self.color = 0
         self.vpadding = vpadding
         self.hpadding = hpadding
         self.vmargin = vmargin
@@ -847,12 +850,20 @@ class MessageWindow(VisualInterface): # {{{2
                 if self.view_y < 0:
                     self.view_y = 0
             elif keycode.name == "DOWN" or keycode.name == "j":
-                if self.view_y + self.view_height < self.message_buffer_height - 2:
+                if self.view_y + self.view_height < self.message_buffer_height - 1:
                     self.view_y += 1
             elif keycode.name == "g":
                 self.view_y = 0
             elif keycode.name == "G":
-                self.view_y = self.message_buffer_height - self.view_height - 2
+                self.view_y = self.message_buffer_height - self.view_height - 1
+            elif keycode.name == "CTRL-B":
+                self.view_y -= self.view_height
+                if self.view_y < 0:
+                    self.view_y = 0
+            elif keycode.name == "CTRL-F":
+                self.view_y += self.view_height
+                if self.view_y + self.view_height >= self.message_buffer_height - 2:
+                    self.view_y = self.message_buffer_height - self.view_height - 1
             elif keycode.name == "LEFT" or keycode.name == "h":
                 self.view_x -= 1
                 if self.view_x < 0:
@@ -1028,6 +1039,42 @@ class Entry(object):
 
 class Selector(object): # {{{2
 
+    help_message = (
+        "Movement",
+        "--------",
+        "<UP>, <CTRL-P>     Move focus to previous item.",
+        "<DOWN>, <CTRL-N>   Move focus to next item.",
+        "<CTRL-B>           Move backwards one page.",
+        "<CTRL-F>           Move forwards one page.",
+        "",
+        "Match Type",
+        "----------",
+        "<CTRL-E>           Change match expression type: fuzzy,",
+        "                   regular, or literal.",
+        "<CTRL-W>           Toggle between matching whole path or just",
+        "                   basename.",
+        "Selection",
+        "--------",
+        "<TAB>              Toggle selection of current focal item.",
+        "<CTRL-A>           Add all visible items to selection.",
+        "<CTRL-X>           Cancel selection: deselect all items.",
+        "<CTRL-SPACE>       Invert current selection.",
+        "",
+        "Action",
+        "--------",
+        "<ENTER>            Add current focal item to selection, exit,",
+        "                   and execute actions on all selected items.",
+        "<RIGHT>, <CTRL-D>  File mode: execute action on current focal",
+        "                   item without exiting program.",
+        "                   Directory mode: enter focal item directory",
+        "                   and restart search from here.",
+        "<LEFT>,  <CTRL-U>  Move up one to parent directory and restart",
+        "                   search from here.",
+        "<CTRL-G>           Show information about current focal item.",
+        "<ESC>, <CTRL-C>    Exit without executing any actions."
+
+    )
+
     class ResetSourcesException(Exception):
         def __init__(self, source_items):
             self.source_items = source_items
@@ -1164,7 +1211,17 @@ class Selector(object): # {{{2
                             len(display_items),
                             os.path.abspath(display_items[focal_item_index].filepath),
                             )
-                    self.display.message([message], color=self.display.help_color, vpadding=1, hpadding=1)
+                    self.display.message(
+                            [message],
+                            color=self.display.help_color,
+                            vpadding=1,
+                            hpadding=1)
+                elif keycode.name == "F1":
+                    self.display.message(
+                            self.help_message,
+                            color=self.display.help_color,
+                            vpadding=1,
+                            hpadding=2)
                 elif keycode.name == "CTRL-H" or keycode.name == "DEL":
                     # Delete/backspace
                     if current_query_chars:
