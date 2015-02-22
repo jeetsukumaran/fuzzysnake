@@ -102,7 +102,7 @@ path(s) by using the `<LEFT>` arrow key or by typing `<CTRL-U>`. Conversely,
 you can "drill down" using the `<RIGHT>` arrow key or `<CTRL-D>`. In the normal
 file-selection mode, this will perform a "preview" action, opening the file or
 carrying out the alternate action specified by the '`-c`'/'`--execute-command`'
-option on the selected file *without* quitting `FuzzySnake`. In the directory
+option on the focal file *without* quitting `FuzzySnake`. In the directory
 selection mode, on the other hand, this will move the search path down into the
 current focal directory.
 
@@ -270,9 +270,9 @@ Higher numbers allow for deeper subdirectories to be visited::
 Changing the Search Directories
 -------------------------------
 
-You can move *up* a directory by using the `<RIGHT>` arrow key or typing
+You can move *up* a directory by using the `<LEFT>` arrow key or typing
 `<CTRL-U>`. In directory search mode, you can move *down* the current focal by
-using the `<LEFT>` arrow key or typing `<CTRL-D>`.
+using the `<RIGHT>` arrow key or typing `<CTRL-D>`.
 
 Simultaneously and Independently Matching Multiple Terms ('`AND`'-ing)
 ----------------------------------------------------------------------

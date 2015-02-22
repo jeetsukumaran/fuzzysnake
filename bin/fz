@@ -467,8 +467,7 @@ class Display(VisualInterface): # {{{2
                 )
         key_code = message_window.show()
         message_window.teardown()
-        self.refresh() # refresh needs to be called after teardown
-        return key_code
+        self.refresh() # refresh needs to be called after teardow key_code
 
     def error(self, message):
         if isinstance(message, str):
@@ -1104,11 +1103,9 @@ class Selector(object): # {{{2
             elif keycode.name == "RIGHT" or keycode.name == "CTRL-D":
                 if self.path_down_fn and display_items and focal_item_index < len(display_items):
                     focal_item = display_items[focal_item_index]
-                    selected_items = self._extract_selected_from_display_items(
-                            display_items=display_items,
-                            focal_item_index=focal_item_index)
-                    new_items, search_path_info = self.path_down_fn(focal_item=focal_item,
-                            selected_items=selected_items)
+                    new_items, search_path_info = self.path_down_fn(
+                            focal_item=focal_item,
+                            selected_items=[focal_item])
                     if new_items is not None:
                         self.search_path_info = search_path_info
                         raise Selector.ResetSourcesException(source_items=new_items)
@@ -1612,10 +1609,13 @@ class Controller(object): # {{{2
             items = self.scan_search_paths()
             return items, self.get_search_path_info()
         else:
-            filepaths = [entry.filepath for entry in selected_items]
-            if not filepaths:
-                self.display.error("No valid files found or selected")
-            else:
+            # filepaths = [entry.filepath for entry in selected_items]
+            # if not filepaths:
+            #     self.display.error("No valid files found or selected")
+            # else:
+            #     self.apply_action(filepaths, as_subprocess=True)
+            filepath = focal_item.filepath
+            if filepath:
                 self.apply_action(filepaths, as_subprocess=True)
             return None, None
 
