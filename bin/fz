@@ -524,7 +524,7 @@ class Display(VisualInterface): # {{{2
 
     ### Rendering (Content)
 
-    def render_main(self,
+    def write_main(self,
             items,
             focal_item_index,
             query_str,
@@ -532,18 +532,18 @@ class Display(VisualInterface): # {{{2
             whole_path_matching,
             search_path_info=None,
             ):
-        self.render_content_items(items, focal_item_index)
-        self.render_status_bar(
+        self.write_content_items(items, focal_item_index)
+        self.write_status_bar(
                 match_type=match_type,
                 whole_path_matching=whole_path_matching,
                 search_path_info=search_path_info,
                 )
-        self.render_query(query_str=query_str, match_type=match_type)
+        self.write_query(query_str=query_str, match_type=match_type)
         self.focal_item_index = focal_item_index
         self.refresh()
         return self.content_items
 
-    def render_content_items(self, items, focal_item_index):
+    def write_content_items(self, items, focal_item_index):
         self.content_buffer.erase()
         self.content_items = items
         if self.content_items:
@@ -551,12 +551,12 @@ class Display(VisualInterface): # {{{2
                 self.new_content_buffer(len(self.content_items))
             for current_idx, item in enumerate(self.content_items):
                 try:
-                    self.render_content_item(current_idx, item, current_idx==focal_item_index)
+                    self.write_content_item(current_idx, item, current_idx==focal_item_index)
                 except Display.OutOfWindowBoundsException:
                     break
         return self.content_items
 
-    def render_content_item(self,
+    def write_content_item(self,
             item_index,
             item,
             is_focal_item):
@@ -595,7 +595,7 @@ class Display(VisualInterface): # {{{2
         except curses.error:
             pass
 
-    def render_status_bar(self,
+    def write_status_bar(self,
             match_type,
             whole_path_matching,
             search_path_info,
@@ -622,7 +622,7 @@ class Display(VisualInterface): # {{{2
         status_bar = status_bar.ljust(width)[:width]
         self.status_bar_window.write(status_bar)
 
-    def render_query(self, query_str, match_type,):
+    def write_query(self, query_str, match_type,):
         height, width = self.query_window_dimensions()
         prompt = self.match_type_prompts[match_type]
         q = (prompt + query_str)[:width-1] # probably makes more sense to truncate front of query?
@@ -704,8 +704,8 @@ class Display(VisualInterface): # {{{2
 
     def update_focal_item(self, current_focal_item_index, new_focal_item_index):
         if new_focal_item_index != current_focal_item_index:
-            self.render_content_item(current_focal_item_index, self.content_items[current_focal_item_index], False)
-            self.render_content_item(new_focal_item_index, self.content_items[new_focal_item_index], True)
+            self.write_content_item(current_focal_item_index, self.content_items[current_focal_item_index], False)
+            self.write_content_item(new_focal_item_index, self.content_items[new_focal_item_index], True)
             self.focal_item_index = new_focal_item_index
             self.refresh()
 
@@ -841,10 +841,10 @@ class MessageWindow(VisualInterface): # {{{2
         self.default_input_window = self.message_buffer
         # self.fill(color=self.color)
 
-    def render(self):
+    def write(self):
         if self.message_buffer is None:
             self.setup()
-        self.render_lines()
+        self.write_lines()
         self.refresh()
 
     def teardown(self):
@@ -861,7 +861,7 @@ class MessageWindow(VisualInterface): # {{{2
             color = self.color
         VisualInterface.fill(self, window=self.message_buffer, color=color)
 
-    def render_lines(self):
+    def write_lines(self):
         # self.message_buffer.erase()
         self.fill(color=self.color)
         hpadding = " " * self.hpadding
@@ -894,9 +894,9 @@ class MessageWindow(VisualInterface): # {{{2
                 )
 
     def show(self, action="any-key"):
-        # self.render()
+        # self.write()
         if self.message_buffer is None:
-            self.render()
+            self.write()
         while True:
             keycode = self.get_keycode(blocking=True, echo=False, focal_window=self.message_buffer)
             if False:
@@ -1185,7 +1185,7 @@ class Selector(object): # {{{2
     def _loop(self, source_items):
         current_query_chars = []
         focal_item_index = 0
-        display_items = self.render(
+        display_items = self.write(
                 items=source_items,
                 focal_item_index=focal_item_index,
                 query_chars=current_query_chars,
@@ -1214,7 +1214,7 @@ class Selector(object): # {{{2
                         raise Selector.ResetSourcesException(source_items=new_items)
                     else:
                         # query status bar might be over-written with message
-                        self.rerender_status_bar()
+                        self.rewrite_status_bar()
             elif keycode.name == "RIGHT" or keycode.name == "CTRL-D":
                 if self.path_down_fn and display_items and focal_item_index < len(display_items):
                     focal_item = display_items[focal_item_index]
@@ -1228,10 +1228,10 @@ class Selector(object): # {{{2
                         raise Selector.ResetSourcesException(source_items=new_items)
                     else:
                         # query status bar might be over-written with message
-                        self.rerender_status_bar()
+                        self.rewrite_status_bar()
             else:
-                # following all require full re-rendering
-                suppress_rerender = False
+                # following all require full re-writing
+                suppress_rewrite = False
                 if keycode.name == "CTRL-W":
                     # <CTRL-W>: Cycle whole-path vs. basename matching
                     self.whole_path_matching = not self.whole_path_matching
@@ -1270,7 +1270,7 @@ class Selector(object): # {{{2
                                 display_items=display_items,
                                 focal_item_index=focal_item_index)
                     else:
-                        suppress_rerender = True
+                        suppress_rewrite = True
                 elif keycode.name == "CTRL-G":
                     # <CTRL-G> info
                     message = "{} of {}: {}".format(
@@ -1296,10 +1296,10 @@ class Selector(object): # {{{2
                         display_items = self.apply_query(current_query_chars, source_items)
                         focal_item_index = 0 # TODO: adjust this smartly
                 elif keycode.name == "CTRL-L" or keycode.name == "EVENT-RESIZE":
-                    # do nothing: just re-render
+                    # do nothing: just re-write
                     # pass
                     self.display.stdscr.refresh()
-                    display_items = self.render(
+                    display_items = self.write(
                             items=display_items,
                             focal_item_index=focal_item_index,
                             query_chars=current_query_chars,
@@ -1310,9 +1310,9 @@ class Selector(object): # {{{2
                     focal_item_index = 0 # TODO: adjust this smartly
                 else:
                     # not supported
-                    suppress_rerender = True
-                if not suppress_rerender:
-                    display_items = self.render(
+                    suppress_rewrite = True
+                if not suppress_rewrite:
+                    display_items = self.write(
                             items=display_items,
                             focal_item_index=focal_item_index,
                             query_chars=current_query_chars,
@@ -1328,8 +1328,8 @@ class Selector(object): # {{{2
         else:
             return []
 
-    def render(self, items, focal_item_index, query_chars):
-        display_items = self.display.render_main(
+    def write(self, items, focal_item_index, query_chars):
+        display_items = self.display.write_main(
                 items=items,
                 focal_item_index=focal_item_index,
                 query_str="".join(query_chars),
@@ -1339,8 +1339,8 @@ class Selector(object): # {{{2
                 )
         return display_items
 
-    def rerender_status_bar(self):
-        return self.display.render_status_bar(
+    def rewrite_status_bar(self):
+        return self.display.write_status_bar(
                 match_type=self.match_type,
                 whole_path_matching=self.whole_path_matching,
                 search_path_info=self.search_path_info,
