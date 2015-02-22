@@ -490,8 +490,9 @@ class Display(VisualInterface): # {{{2
                 hpadding=hpadding,
                 )
         key_code = message_window.show()
-        message_window.teardown()
-        self.refresh() # refresh needs to be called after teardow key_code
+        ## not needed any more?
+        # message_window.teardown()
+        # self.refresh() # refresh needs to be called after teardow key_code
 
     def error(self, message):
         if isinstance(message, str):
@@ -735,29 +736,38 @@ class Display(VisualInterface): # {{{2
     ### Special
 
     def get_progress_ticker(self):
-        return ProgressTicker(display=self, color=self.spinner_color)
+        return ProgressTicker(stdscr=self.stdscr, color=self.spinner_color)
 
 # }}}2
 
-class ProgressTicker(object): # {{{2
-
-    def __init__(self, display, color):
-        self.display = display
+class StatusBarMessageWindow(VisualInterface): # {{{2
+    def __init__(self, stdscr, color=0):
+        VisualInterface.__init__(self, stdscr=stdscr)
         self.color = color
+        self.setup()
+
+    def setup(self):
+        screen_height, screen_width = self.screen_dimensions()
+        self.status_bar_message_window = curses.newwin(1, screen_width, screen_height-Display.QUERY_WINDOW_HEIGHT, 0)
+
+    def write(self, message):
+        screen_height, screen_width = self.screen_dimensions()
+        message = message.ljust(screen_width)[:screen_width-1]
+        self.status_bar_message_window.addstr(0, 0, message, self.color)
+        self.status_bar_message_window.refresh()
+# }}}2
+
+class ProgressTicker(StatusBarMessageWindow): # {{{2
+
+    def __init__(self, stdscr, color):
+        StatusBarMessageWindow.__init__(self, stdscr=stdscr, color=color)
         self.current_step = 0
         self.spinner_cycle = itertools.cycle(["|", "/", "-", "\\", "-",])
 
     def update(self, message):
         self.current_step += 1
         s0 = next(self.spinner_cycle) + " " + message
-        self.display.write_status_bar(s0, color=self.color, refresh=True)
-
-        # height, width = get_screen_dimensions()
-        # # self.window.addstr("[" + next(self.spinner_cycle) + "] " + message)
-        # self.window.move(height - STATUS_BAR_OFFSET, 0)
-        # self.window.addstr(s1, self.spinner_color)
-        # self.window.move(height - STATUS_BAR_OFFSET, min(len(s0), width-1))
-        # self.window.refresh()
+        self.write(s0)
 # }}}2
 
 class MessageWindow(VisualInterface): # {{{2
@@ -821,11 +831,12 @@ class MessageWindow(VisualInterface): # {{{2
         self.refresh()
 
     def teardown(self):
-        if self.message_buffer is not None:
-            self.message_buffer.erase()
-            self.refresh()
-            self.message_buffer = None
-            self.default_input_window = None
+        return
+        # if self.message_buffer is not None:
+        #     self.message_buffer.erase()
+        #     self.refresh()
+        #     self.message_buffer = None
+        #     self.default_input_window = None
 
     def fill(self, color=None):
         if self.message_buffer is None:
