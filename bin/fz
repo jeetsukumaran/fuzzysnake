@@ -425,7 +425,7 @@ class Display(VisualInterface): # {{{2
         if nrows is None:
             nrows = cv_height
         self.content_buffer = curses.newpad(nrows, cv_width)
-        self.fill(self.content_buffer)
+        self.fill_content_buffer()
         self.query_window = curses.newwin(self.QUERY_WINDOW_HEIGHT, cv_width, screen_height-self.QUERY_WINDOW_HEIGHT, 0)
         self.default_input_window = self.query_window
 
@@ -443,6 +443,9 @@ class Display(VisualInterface): # {{{2
 
     def resize_content_buffer(self, nrows):
         self.content_buffer.resize(nrows, self.screen_dimensions()[1])
+        self.fill_content_buffer()
+
+    def fill_content_buffer(self):
         self.fill(self.content_buffer)
 
     ### Rendering (Framework)
@@ -1152,6 +1155,8 @@ class Selector(object): # {{{2
                     new_items, search_path_info = self.path_up_fn()
                     if new_items is not None:
                         self.search_path_info = search_path_info
+                        self.display.fill_content_buffer()
+                        self.display.refresh()
                         raise Selector.ResetSourcesException(source_items=new_items)
             elif keycode.name == "RIGHT" or keycode.name == "CTRL-D":
                 if self.path_down_fn and display_items and focal_item_index < len(display_items):
@@ -1161,6 +1166,8 @@ class Selector(object): # {{{2
                             selected_items=[focal_item])
                     if new_items is not None:
                         self.search_path_info = search_path_info
+                        self.display.fill_content_buffer()
+                        self.display.refresh()
                         raise Selector.ResetSourcesException(source_items=new_items)
             else:
                 # following all require full re-rendering
