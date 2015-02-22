@@ -1683,15 +1683,15 @@ class Controller(object): # {{{2
     def path_down(self, focal_item, selected_items):
         if self.args.directory_search_mode:
             new_dir = focal_item.filepath
-            for sub_dir in os.listdir(new_dir):
-                if os.path.isdir(os.path.join(new_dir, sub_dir)):
-                    self.args.search_paths = [os.path.normpath(os.path.relpath(new_dir))]
-                    break
-            else:
-                self.display.error("No valid sub-directories found under selected path")
-                return None, None
+            old_search_paths = list(self.args.search_paths)
+            self.args.search_paths = [os.path.normpath(os.path.relpath(new_dir))]
             items = self.scan_search_paths()
-            return items, self.get_search_path_info()
+            if not items:
+                self.display.error("No valid sub-directories found under selected path")
+                self.args.search_paths = old_search_paths
+                return None, None
+            else:
+                return items, self.get_search_path_info()
         else:
             # filepaths = [entry.filepath for entry in selected_items]
             # if not filepaths:
