@@ -249,8 +249,8 @@ class VisualInterface(object): # {{{2
         curses.init_pair(7, curses.COLOR_YELLOW, curses.COLOR_BLACK)
         self.spinner_color = curses.color_pair(7) | curses.A_BOLD | curses.A_REVERSE
 
-        curses.init_pair(8, curses.COLOR_YELLOW, curses.COLOR_RED)
-        self.error_color = curses.color_pair(8) | curses.A_BOLD | curses.A_REVERSE
+        curses.init_pair(8, curses.COLOR_WHITE, curses.COLOR_RED)
+        self.error_color = curses.color_pair(8) | curses.A_BOLD
 
     def restart(self):
         self.refresh()
@@ -472,7 +472,10 @@ class Display(VisualInterface): # {{{2
             message_lines = message
         self.message(
                 message_lines=message_lines,
-                color=self.error_color)
+                color=self.error_color,
+                vpadding=1,
+                hpadding=2,
+                )
 
     def write_status_bar(self, s, color=None, refresh=True):
         if color is None:
@@ -817,16 +820,20 @@ class MessageWindow(VisualInterface): # {{{2
                 self.view_pos_left + self.view_width-1,
                 )
 
-    def show(self):
+    def show(self, action="any-key"):
         # self.render()
         if self.message_buffer is None:
             self.render()
         while True:
             keycode = self.get_keycode(blocking=True, echo=False, focal_window=self.message_buffer)
-            if keycode is None:
+            if action == "any-key":
+                return keycode
+            elif keycode is None:
                 continue
-            if keycode.name in self.CANCEL_KEYCODES_NAMES:
-                break
+            elif (action == "ok" or action == "ok-cancel") and (keycode.name == "CTRL-J" or keycode.name == "CTRL-M" or keycode.name in self.CANCEL_KEYCODES_NAMES):
+                return keycode
+            elif keycode.name in self.CANCEL_KEYCODES_NAMES:
+                return keycode
             elif keycode.name == "UP" or keycode.name == "k":
                 self.view_y -= 1
                 if self.view_y < 0:
@@ -1589,7 +1596,7 @@ class Controller(object): # {{{2
                     self.args.search_paths = [os.path.normpath(os.path.relpath(new_dir))]
                     break
             else:
-                self.display.error("No valid sub-directories found in new search path(s)")
+                self.display.error("No valid sub-directories found under selected path")
                 return None, None
             items = self.scan_search_paths()
             return items, self.get_search_path_info()
