@@ -252,6 +252,9 @@ class VisualInterface(object): # {{{2
         curses.init_pair(8, curses.COLOR_WHITE, curses.COLOR_RED)
         self.error_color = curses.color_pair(8) | curses.A_BOLD
 
+        curses.init_pair(9, curses.COLOR_BLUE, curses.COLOR_WHITE)
+        self.help_color = curses.color_pair(9) | curses.A_BOLD | curses.A_REVERSE
+
     def restart(self):
         self.refresh()
 
@@ -1154,6 +1157,14 @@ class Selector(object): # {{{2
                                 focal_item_index=focal_item_index)
                     else:
                         suppress_rerender = True
+                elif keycode.name == "CTRL-G":
+                    # <CTRL-G> info
+                    message = "{} of {}: {}".format(
+                            focal_item_index+1,
+                            len(display_items),
+                            os.path.abspath(display_items[focal_item_index].filepath),
+                            )
+                    self.display.message([message], color=self.display.help_color, vpadding=1, hpadding=1)
                 elif keycode.name == "CTRL-H" or keycode.name == "DEL":
                     # Delete/backspace
                     if current_query_chars:
@@ -1201,6 +1212,7 @@ class Selector(object): # {{{2
                 return self._loop(items)
             except Selector.ResetSourcesException as e:
                 items = e.source_items
+
 # }}}2
 
 class DirectorySource(object): # {{{2
@@ -1518,8 +1530,6 @@ class Controller(object): # {{{2
         self.args = args
         self.display = Display(stdscr=self.subscreen.stdscr)
         self.editor_path = os.environ.get("FUZZYSNAKE_EDITOR", os.environ.get("EDITOR", "vi"))
-
-    ### Data Accession
 
     def scan_search_paths(self, items=None, exit_on_interrupt=False, interrupt_exit_value=1):
         if items is None:
