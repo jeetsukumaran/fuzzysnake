@@ -462,7 +462,7 @@ class Display(VisualInterface): # {{{2
                 vpadding=vpadding,
                 hpadding=hpadding,
                 )
-        message_window.show(self)
+        message_window.show()
         return
 
     def error(self, message):
@@ -817,15 +817,15 @@ class MessageWindow(VisualInterface): # {{{2
                 self.view_pos_left + self.view_width-1,
                 )
 
-    def show(self, display):
+    def show(self):
         # self.render()
         if self.message_buffer is None:
             self.render()
         while True:
-            keycode = display.get_keycode(blocking=True, echo=False, focal_window=self.message_buffer)
+            keycode = self.get_keycode(blocking=True, echo=False, focal_window=self.message_buffer)
             if keycode is None:
                 continue
-            if keycode.name in display.CANCEL_KEYCODES_NAMES:
+            if keycode.name in self.CANCEL_KEYCODES_NAMES:
                 break
             elif keycode.name == "UP" or keycode.name == "k":
                 self.view_y -= 1
