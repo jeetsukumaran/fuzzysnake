@@ -475,9 +475,6 @@ class Display(VisualInterface): # {{{2
         factor = 1.0
         self.content_buffer_item_capacity = 0
 
-        # self.content_buffer_item_capacity = 100
-        # self.content_buffer.resize(100, self.screen_dimensions()[1])
-
         while True and factor > 0:
             target_nrows = int(factor * nrows)
             self.content_buffer.resize(target_nrows, self.screen_dimensions()[1])
@@ -904,7 +901,7 @@ class MessageWindow(VisualInterface): # {{{2
         self.default_input_window = self.message_buffer
         # self.fill(color=self.color)
 
-    def write(self):
+    def render(self):
         if self.message_buffer is None:
             self.setup()
         self.write_lines()
@@ -957,9 +954,8 @@ class MessageWindow(VisualInterface): # {{{2
                 )
 
     def show(self, action="any-key"):
-        # self.write()
         if self.message_buffer is None:
-            self.write()
+            self.render()
         while True:
             keycode = self.get_keycode(blocking=True, echo=False, focal_window=self.message_buffer)
             if False:
@@ -1341,17 +1337,28 @@ class Selector(object): # {{{2
                     if len(listed_items) == num_displayed_items:
                         num_items_metainfo = "{}".format(num_displayed_items)
                     else:
-                        num_items_metainfo = "{} ({} hidden)".format(num_displayed_items, listed_items)
-                    message = "{} of {}: {}".format(
-                            focal_item_index+1,
-                            num_items_metainfo,
-                            os.path.abspath(listed_items[focal_item_index].filepath),
-                            )
-                    self.display.message(
-                            [message],
-                            color=self.display.help_color,
-                            vpadding=1,
-                            hpadding=1)
+                        num_items_metainfo = "{} ({} hidden)".format(num_displayed_items, len(listed_items))
+                    path_to_display = os.path.abspath(listed_items[focal_item_index].filepath)
+                    # path_to_display = listed_items[focal_item_index].filepath,
+                    original_truncate_width = len(path_to_display)
+                    factor = 1.0
+                    while True and factor > 0:
+                        message = "{} of {}: {}".format(
+                                focal_item_index+1,
+                                num_items_metainfo,
+                                truncate_middle(path_to_display, int(factor * original_truncate_width)),
+                                path_to_display,
+                                )
+                        try:
+                            self.display.message(
+                                    [message],
+                                    color=self.display.help_color,
+                                    vpadding=1,
+                                    hpadding=1)
+                            break
+                        except curses.error:
+                            factor = factor - 0.05
+                            pass
                 elif keycode.name == "F1":
                     self.display.message(
                             self.help_message,
