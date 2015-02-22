@@ -110,6 +110,12 @@ If you decide that you do *not* want to follow through with any actions at all,
 you can hit `<ESC>` or `<CTRL-C>` at any time to cancel
 `FuzzySnake` and return to the shell.
 
+Showing Help
+------------
+
+You can type `<F1>` to display a brief listing of all available special keys
+and commands.
+
 Setting the Default Editor
 --------------------------
 
