@@ -368,15 +368,6 @@ class VisualInterface(object): # {{{2
         else:
             return self.KEYCODES.get(ch_value, None)
 
-    def get_query_keycode(self, echo=False, focal_window=None):
-        if focal_window is None:
-            focal_window = self.default_input_window
-        focal_window.move(self.QUERY_WINDOW_HEIGHT - self.QUERY_ROW_OFFSET, self.query_length)
-        cursor = self.set_cursor(2)
-        keycode = self.get_keycode(blocking=True, echo=echo, focal_window=focal_window)
-        cursor = self.set_cursor(cursor)
-        return keycode
-
     def pause_for_keypress(self):
         cursor = self.set_cursor(2)
         ch = self.getch(blocking=True)
@@ -391,8 +382,18 @@ class VisualInterface(object): # {{{2
             return True
         return False
 
-
-
+    def input_keycode(self, focal_window=None, echo=None, pos_y=None, pos_x=None):
+        if focal_window is None:
+            focal_window = self.default_input_window
+        if pos_y is not None and pos_x is not None:
+            try:
+                focal_window.move(pos_y, pos_x)
+            except curses.error:
+                pass
+        cursor = self.set_cursor(2)
+        keycode = self.get_keycode(blocking=True, echo=echo, focal_window=focal_window)
+        cursor = self.set_cursor(cursor)
+        return keycode
 
 # }}}2
 
@@ -414,10 +415,16 @@ class Display(VisualInterface): # {{{2
         VisualInterface.__init__(self, stdscr=stdscr)
         self.content_buffer = None
         self.content_vscroll_offset = 0
+        self.query_string = None
         self.query_length = 0
         self.content_limit = 1000
         self.content_items = None
         self.focal_item_index = 0
+        self.match_type_prompts = {
+                "fuzzy":   "? ",
+                "literal": "= ",
+                "reg-exp": "% ",
+        }
         self.start()
 
     def start(self):
@@ -427,7 +434,8 @@ class Display(VisualInterface): # {{{2
         cv_height, cv_width = self.content_buffer_available_display_dimensions()
         nrows = cv_height + 1
         self.new_content_buffer(nrows, fill=True)
-        self.query_window = curses.newwin(self.QUERY_WINDOW_HEIGHT, cv_width, screen_height-self.QUERY_WINDOW_HEIGHT, 0)
+        self.status_bar_window = StatusBarMessageWindow(stdscr=self.stdscr, color=self.status_bar_color)
+        self.query_window = curses.newwin(1, cv_width, screen_height-1, 0)
         self.default_input_window = self.query_window
 
     ### Window Management
@@ -507,15 +515,6 @@ class Display(VisualInterface): # {{{2
                 )
         return keycode
 
-    def write_status_bar(self, s, color=None, refresh=True):
-        if color is None:
-            color = self.status_bar_color
-        height, width = self.query_window_dimensions()
-        padded_message = s.ljust(width)[:width]
-        self.query_window.addstr(self.QUERY_WINDOW_HEIGHT - self.STATUS_BAR_OFFSET, 0, padded_message, color)
-        if refresh:
-            self.query_window.refresh()
-
     ### Rendering (Content)
 
     def render_main(self,
@@ -526,15 +525,13 @@ class Display(VisualInterface): # {{{2
             whole_path_matching,
             search_path_info=None,
             ):
-        self.content_buffer.erase()
         self.render_content_items(items, focal_item_index)
-        self.query_window.erase()
-        self.render_query(
-                query_str=query_str,
+        self.render_status_bar(
                 match_type=match_type,
                 whole_path_matching=whole_path_matching,
-                focal_item_index=focal_item_index,
-                search_path_info=search_path_info)
+                search_path_info=search_path_info,
+                )
+        self.render_query(query_str=query_str, match_type=match_type)
         self.focal_item_index = focal_item_index
         self.refresh()
         return self.content_items
@@ -591,24 +588,18 @@ class Display(VisualInterface): # {{{2
         except curses.error:
             pass
 
-    def render_query(self,
-            query_str,
+    def render_status_bar(self,
             match_type,
             whole_path_matching,
-            focal_item_index,
-            search_path_info=None,
+            search_path_info,
             ):
-        height, width = self.query_window_dimensions()
-
+        height, width = self.status_bar_window.dimensions()
         status_bar_components = []
         if match_type == "fuzzy":
-            prompt = "? "
             status_bar_components.append("[^E] expression: fuzzy  ")
         elif match_type == "literal":
-            prompt = "= "
             status_bar_components.append("[^E] expression: literal")
         elif match_type == "regexp":
-            prompt = "% "
             status_bar_components.append("[^E] expression: regular")
         if whole_path_matching:
             status_bar_components.append("[^W] match: whole path")
@@ -621,19 +612,15 @@ class Display(VisualInterface): # {{{2
             remaining = width - len(status_bar) - 1
             if remaining > 0:
                 status_bar += (("({})".format(truncate_front(search_path_info, remaining))).rjust(remaining))
-                # num_entries = len(self.content_items)
-                # if num_entries:
-                #     focal_item_index += 1
-                # status_bar += ("{} of {} entries (".format(focal_item_index, num_entries, truncate_front(search_path_info, remaining).rjust(remaining)
-
-        # status_bar = status_bar.ljust(width)[:width+1]
         status_bar = status_bar.ljust(width)[:width]
-        self.query_window.addstr(self.QUERY_WINDOW_HEIGHT - self.STATUS_BAR_OFFSET, 0, status_bar, self.status_bar_color)
+        self.status_bar_window.write(status_bar)
 
-        q = prompt + query_str
+    def render_query(self, query_str, match_type,):
+        height, width = self.query_window_dimensions()
+        prompt = self.match_type_prompts[match_type]
+        q = (prompt + query_str)[:width-1] # probably makes more sense to truncate front of query?
         self.query_length = len(q)
-        self.query_window.addstr(self.QUERY_WINDOW_HEIGHT - self.QUERY_ROW_OFFSET, 0, q, self.prompt_color)
-
+        self.query_window.addstr(0, 0, q, self.prompt_color)
 
     ### Displaying
 
@@ -651,6 +638,7 @@ class Display(VisualInterface): # {{{2
             content_height, content_width = self.content_buffer_dimensions()
             if content_height < 0:
                 self.content_buffer_allocation_failure(num_content_items)
+            self.status_bar_window.refresh()
             self.query_window.noutrefresh()
             if not num_content_items:
                 self.content_buffer.noutrefresh(
@@ -695,9 +683,17 @@ class Display(VisualInterface): # {{{2
                         )
             curses.doupdate()
         except Exception as e:
-            pass
+            raise
 
     ### Content Interaction
+
+    def get_query_keycode(self, echo=False, focal_window=None):
+        return self.input_keycode(
+                focal_window=self.query_window,
+                echo=echo,
+                pos_y=0,
+                pos_x=self.query_length
+                )
 
     def update_focal_item(self, current_focal_item_index, new_focal_item_index):
         if new_focal_item_index != current_focal_item_index:
@@ -741,6 +737,7 @@ class Display(VisualInterface): # {{{2
 # }}}2
 
 class StatusBarMessageWindow(VisualInterface): # {{{2
+    STATUS_BAR_OFFSET = 2
     def __init__(self, stdscr, color=0):
         VisualInterface.__init__(self, stdscr=stdscr)
         self.color = color
@@ -748,13 +745,26 @@ class StatusBarMessageWindow(VisualInterface): # {{{2
 
     def setup(self):
         screen_height, screen_width = self.screen_dimensions()
-        self.status_bar_message_window = curses.newwin(1, screen_width, screen_height-Display.QUERY_WINDOW_HEIGHT, 0)
+        self._window = curses.newwin(1, screen_width, screen_height-Display.STATUS_BAR_OFFSET, 0)
+
+    def dimensions(self):
+        return self._window.getmaxyx()
 
     def write(self, message):
-        screen_height, screen_width = self.screen_dimensions()
-        message = message.ljust(screen_width)[:screen_width-1]
-        self.status_bar_message_window.addstr(0, 0, message, self.color)
-        self.status_bar_message_window.refresh()
+        height, width = self.dimensions()
+        message = message.ljust(width)[:width]
+        try:
+            self._window.addstr(0, 0, message, self.color)
+        except curses.error:
+            pass
+        self._window.refresh()
+
+    def refresh(self, delayed=False):
+        if delayed:
+            self._window.noutrefresh()
+        else:
+            self._window.refresh()
+
 # }}}2
 
 class ProgressTicker(StatusBarMessageWindow): # {{{2
@@ -1198,10 +1208,7 @@ class Selector(object): # {{{2
                         raise Selector.ResetSourcesException(source_items=new_items)
                     else:
                         # query status bar might be over-written with message
-                        self.render_query(
-                                query_chars=current_query_chars,
-                                focal_item_index=focal_item_index,
-                                )
+                        self.rerender_status_bar()
             elif keycode.name == "RIGHT" or keycode.name == "CTRL-D":
                 if self.path_down_fn and display_items and focal_item_index < len(display_items):
                     focal_item = display_items[focal_item_index]
@@ -1215,10 +1222,7 @@ class Selector(object): # {{{2
                         raise Selector.ResetSourcesException(source_items=new_items)
                     else:
                         # query status bar might be over-written with message
-                        self.render_query(
-                                query_chars=current_query_chars,
-                                focal_item_index=focal_item_index,
-                                )
+                        self.rerender_status_bar()
             else:
                 # following all require full re-rendering
                 suppress_rerender = False
@@ -1329,12 +1333,10 @@ class Selector(object): # {{{2
                 )
         return display_items
 
-    def render_query(self, query_chars, focal_item_index):
-        return self.display.render_query(
-                query_str="".join(query_chars),
+    def rerender_status_bar(self):
+        return self.display.render_status_bar(
                 match_type=self.match_type,
                 whole_path_matching=self.whole_path_matching,
-                focal_item_index=focal_item_index,
                 search_path_info=self.search_path_info,
                 )
 
