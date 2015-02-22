@@ -1067,9 +1067,9 @@ class Selector(object): # {{{2
         "<RIGHT>, <CTRL-D>  File mode: execute action on current focal",
         "                   item without exiting program.",
         "                   Directory mode: enter focal item directory",
-        "                   and restart search from here.",
-        "<LEFT>,  <CTRL-U>  Move up one to parent directory and restart",
-        "                   search from here.",
+        "                   and restart search from there.",
+        "<LEFT>,  <CTRL-U>  Move up to parent directories of current",
+        "                   search paths and restart search from there.",
         "<CTRL-G>           Show information about current focal item.",
         "<ESC>, <CTRL-C>    Exit without executing any actions."
 
