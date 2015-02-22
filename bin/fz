@@ -538,7 +538,7 @@ class Display(VisualInterface): # {{{2
         # self.content_buffer.move(row, 0)
         # self.content_buffer.clrtoeol()
         # -4: account for leader, and avoid writing at last position
-        display_name = truncate_middle(item.display_name, width-4).ljust(width-4)
+        display_name = truncate_middle(item.display_name, width-3).ljust(width-3)
         weight = curses.A_NORMAL
         color = self.default_color
         if item.is_selected:
@@ -553,15 +553,18 @@ class Display(VisualInterface): # {{{2
             weight = curses.A_REVERSE
         else:
             self.content_buffer.addstr(row, 1, "  ", self.default_color)
-        if item.score > 0:
-            left = display_name[:item.match_start]
-            main = display_name[item.match_start:item.match_end]
-            right = display_name[item.match_end:]
-            self.content_buffer.addstr(row, 3, left, color | weight)
-            self.content_buffer.addstr(row, 3 + len(left), main, self.match_color | weight)
-            self.content_buffer.addstr(row, 3 + len(left) + len(main), right, color | weight)
-        else:
-            self.content_buffer.addstr(row, 3, display_name, color | weight)
+        try:
+            if item.score > 0:
+                left = display_name[:item.match_start]
+                main = display_name[item.match_start:item.match_end]
+                right = display_name[item.match_end:]
+                self.content_buffer.addstr(row, 3, left, color | weight)
+                self.content_buffer.addstr(row, 3 + len(left), main, self.match_color | weight)
+                self.content_buffer.addstr(row, 3 + len(left) + len(main), right, color | weight)
+            else:
+                self.content_buffer.addstr(row, 3, display_name, color | weight)
+        except curses.error:
+            pass
 
     def render_query(self,
             query_str,
