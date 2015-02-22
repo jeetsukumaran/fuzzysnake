@@ -210,6 +210,7 @@ class VisualInterface(object): # {{{2
     KEYCODES[-67] = KeyCode(name="RIGHT", is_special=True)
     KEYCODES[-68] = KeyCode(name="LEFT", is_special=True)
     KEYCODES[-80] = KeyCode(name="F1", is_special=True)
+    KEYCODES[-1001] = KeyCode(name="EVENT-RESIZE", is_special=True)
 
     CANCEL_KEYCODES_NAMES = set(["ESC", "FS", "CTRL-C"])
     # }}}3
@@ -348,6 +349,8 @@ class VisualInterface(object): # {{{2
         ch_value = self.getch(blocking=blocking, echo=echo, focal_window=focal_window)
         if ch_value == -1:
             return None
+        elif ch_value == curses.KEY_RESIZE:
+            return self.KEYCODES[-1001]
         elif ch_value == 27:
             # Escape: could be just Escape, could be Ansi escape for
             # arrows
@@ -423,12 +426,26 @@ class Display(VisualInterface): # {{{2
             self.abort("Insufficient room for interface")
         cv_height, cv_width = self.content_buffer_available_display_dimensions()
         nrows = cv_height + 1
-        self.content_buffer = curses.newpad(nrows, cv_width)
-        self.fill_content_buffer()
+        self.new_content_buffer(nrows, fill=True)
         self.query_window = curses.newwin(self.QUERY_WINDOW_HEIGHT, cv_width, screen_height-self.QUERY_WINDOW_HEIGHT, 0)
         self.default_input_window = self.query_window
 
-    ### Book-keeping
+    ### Window Management
+
+    def new_content_buffer(self, nrows, fill=True):
+        try:
+            self.content_buffer = curses.newpad(nrows, self.screen_dimensions()[1])
+        except curses.error:
+            self.content_buffer_allocation_failure(nrows)
+        if fill:
+            self.fill_content_buffer()
+        return self.content_buffer
+
+    def content_buffer_allocation_failure(self, nrows):
+        self.abort(
+                ("Content buffer allocation failure with {} items. Limit\n"
+                "the number of items using the '--item-limit' option or by\n"
+                "breaking up search into smaller subdirectories.".format(nrows)))
 
     def query_window_dimensions(self):
         return self.query_window.getmaxyx()
@@ -440,9 +457,10 @@ class Display(VisualInterface): # {{{2
         screen_height, screen_width = self.screen_dimensions()
         return screen_height - self.QUERY_WINDOW_HEIGHT - 1, screen_width
 
-    def resize_content_buffer(self, nrows):
+    def resize_content_buffer(self, nrows, fill=True):
         self.content_buffer.resize(nrows, self.screen_dimensions()[1])
-        self.fill_content_buffer()
+        if fill:
+            self.fill_content_buffer()
 
     def fill_content_buffer(self):
         self.fill(self.content_buffer)
@@ -525,7 +543,7 @@ class Display(VisualInterface): # {{{2
         self.content_items = items
         if self.content_items:
             if len(self.content_items) > self.content_buffer_dimensions()[0]:
-                self.resize_content_buffer(len(self.content_items))
+                self.new_content_buffer(len(self.content_items))
             for current_idx, item in enumerate(self.content_items):
                 try:
                     self.render_content_item(current_idx, item, current_idx==focal_item_index)
@@ -627,10 +645,12 @@ class Display(VisualInterface): # {{{2
 
     def refresh(self):
         try:
-            content_height, content_width = self.content_buffer_dimensions()
             screen_height, screen_width = self.screen_dimensions()
-            self.query_window.noutrefresh()
             num_content_items = len(self.content_items)
+            content_height, content_width = self.content_buffer_dimensions()
+            if content_height < 0:
+                self.content_buffer_allocation_failure(num_content_items)
+            self.query_window.noutrefresh()
             if not num_content_items:
                 self.content_buffer.noutrefresh(
                         0,
@@ -1254,6 +1274,15 @@ class Selector(object): # {{{2
                         current_query_chars.pop()
                         display_items = self.apply_query(current_query_chars, source_items)
                         focal_item_index = 0 # TODO: adjust this smartly
+                elif keycode.name == "CTRL-L" or keycode.name == "EVENT-RESIZE":
+                    # do nothing: just re-render
+                    # pass
+                    self.display.stdscr.refresh()
+                    display_items = self.render(
+                            items=display_items,
+                            focal_item_index=focal_item_index,
+                            query_chars=current_query_chars,
+                            )
                 elif not keycode.is_special:
                     current_query_chars.append(keycode.name)
                     display_items = self.apply_query(current_query_chars, source_items)
@@ -1321,7 +1350,9 @@ class DirectorySource(object): # {{{2
             dirs_to_exclude=None,
             files_to_exclude=None,
             filter_for_glob_names=None,
-            max_recursion_depth=None):
+            max_recursion_depth=None,
+            max_items=None,
+            ):
         self.display = display
         self.ignore_directories = ignore_directories
         self.ignore_files = ignore_files
@@ -1363,6 +1394,7 @@ class DirectorySource(object): # {{{2
             dot_dirs_ignore_pattern = "(" + "|".join(dot_dirs_to_ignore) + ")"
             DirectorySource.dot_dirs_ignore_pattern = re.compile(dot_dirs_ignore_pattern)
         self.max_recursion_depth = max_recursion_depth
+        self.max_items = max_items
         self.filters = []
         self.git_exclude_filters = []
 
@@ -1461,6 +1493,9 @@ class DirectorySource(object): # {{{2
                             match_end=0,
                             whole_path_matching=False)
                     results.append(entry)
+                    if self.max_items and len(results) > self.max_items:
+                        self.display.message(["Item limit reached: {}".format(self.max_items)])
+                        raise KeyboardInterrupt()
             # have to delete the names manually
             if fltr is not None:
                 for i in range(len(dirs) - 1, -1, -1):
@@ -1686,7 +1721,8 @@ class Controller(object): # {{{2
                             dirs_to_exclude=self.args.dirs_to_exclude,
                             files_to_exclude=self.args.files_to_exclude,
                             filter_for_glob_names=self.args.filter_for_glob_names,
-                            max_recursion_depth=self.args.max_recursion_depth)
+                            max_recursion_depth=self.args.max_recursion_depth,
+                            max_items=self.args.max_items)
                     path = os.path.expandvars(os.path.expanduser(path))
                     ds.fetch(start_dir=path,
                             results=items,
@@ -1857,6 +1893,12 @@ def parse_cli_args():  #{{{2
             help="Maximum depth of sub-directories to recursively search. "
             "If not specified, recursion depth is unlimited. If 0, then "
             "only the top-level directory is searched.")
+    search_options_section.add_argument(
+            "--item-limit", "--max-items",
+            dest="max_items",
+            type=int,
+            help="Maximum number of items to find. If 0, then no limit.",
+            )
     search_options_section.add_argument(
             "-s", "--single-selection",
             action="store_false",
