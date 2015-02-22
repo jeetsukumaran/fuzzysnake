@@ -841,12 +841,11 @@ class MessageWindow(VisualInterface): # {{{2
         self.refresh()
 
     def teardown(self):
-        return
-        # if self.message_buffer is not None:
-        #     self.message_buffer.erase()
-        #     self.refresh()
-        #     self.message_buffer = None
-        #     self.default_input_window = None
+        if self.message_buffer is not None:
+            self.message_buffer.erase()
+            self.refresh()
+            self.message_buffer = None
+            self.default_input_window = None
 
     def fill(self, color=None):
         if self.message_buffer is None:
