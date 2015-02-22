@@ -407,23 +407,22 @@ class Display(VisualInterface): # {{{2
 
     ### Life-cycle
 
-    def __init__(self, stdscr, nrows=None):
+    def __init__(self, stdscr):
         VisualInterface.__init__(self, stdscr=stdscr)
         self.content_buffer = None
         self.content_vscroll_offset = 0
-        self.start(nrows=nrows)
         self.query_length = 0
         self.content_limit = 1000
         self.content_items = None
         self.focal_item_index = 0
+        self.start()
 
-    def start(self, nrows=None):
+    def start(self):
         screen_height, screen_width = self.screen_dimensions()
         if screen_height < 5 or screen_width <10:
             self.abort("Insufficient room for interface")
         cv_height, cv_width = self.content_buffer_available_display_dimensions()
-        if nrows is None:
-            nrows = cv_height
+        nrows = cv_height + 1
         self.content_buffer = curses.newpad(nrows, cv_width)
         self.fill_content_buffer()
         self.query_window = curses.newwin(self.QUERY_WINDOW_HEIGHT, cv_width, screen_height-self.QUERY_WINDOW_HEIGHT, 0)
@@ -644,8 +643,14 @@ class Display(VisualInterface): # {{{2
             else:
                 available_height = self.content_buffer_available_display_dimensions()[0]
                 if num_content_items < available_height:
-                    screen_top = screen_height - num_content_items - (self.QUERY_WINDOW_HEIGHT)
-                    content_top = content_height - num_content_items
+                    # screen_top = screen_height - num_content_items - (self.QUERY_WINDOW_HEIGHT)
+                    # content_top = content_height - num_content_items
+                    screen_top = 0 # to ensure it gets cleaned if the number of items is reduced
+                    blank_line = " " * (screen_width)
+                    for idx in range(num_content_items+1, available_height+1):
+                        assert content_height - idx >= 0
+                        self.content_buffer.addstr(content_height-idx, 0, blank_line, self.default_color)
+                    content_top = content_height - available_height - 1
                 else:
                     screen_top = 0
                     half_available_height = int(available_height / 2)
@@ -669,7 +674,7 @@ class Display(VisualInterface): # {{{2
                         )
             curses.doupdate()
         except Exception as e:
-            pass
+            raise
 
     ### Content Interaction
 
@@ -786,6 +791,7 @@ class MessageWindow(VisualInterface): # {{{2
         self.message_buffer_height = max_rows
         self.message_buffer_width = max_cols
         self.message_buffer = curses.newpad(self.message_buffer_height, self.message_buffer_width)
+        self.default_input_window = self.message_buffer
         # self.fill(color=self.color)
 
     def render(self):
@@ -799,6 +805,7 @@ class MessageWindow(VisualInterface): # {{{2
             self.message_buffer.erase()
             self.refresh()
             self.message_buffer = None
+            self.default_input_window = None
 
     def fill(self, color=None):
         if self.message_buffer is None:
