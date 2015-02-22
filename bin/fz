@@ -574,7 +574,6 @@ class Display(VisualInterface): # {{{2
         self.write_query(query_str=query_str, match_type=match_type)
         self.focal_item_index = focal_item_index
         self.refresh()
-        return self.content_items
 
     def write_content_items(self, items, focal_item_index):
         self.content_buffer.erase()
@@ -1249,8 +1248,9 @@ class Selector(object): # {{{2
     def _loop(self, source_items):
         current_query_chars = []
         focal_item_index = 0
-        display_items = self.redisplay_all(
-                items=source_items,
+        listed_items = list(source_items)
+        self.redisplay_all(
+                items=listed_items,
                 focal_item_index=focal_item_index,
                 query_chars=current_query_chars,
                 )
@@ -1280,8 +1280,8 @@ class Selector(object): # {{{2
                         # query status bar might be over-written with message
                         self.redisplay_status_bar()
             elif keycode.name == "RIGHT" or keycode.name == "CTRL-D":
-                if self.path_down_fn and display_items and focal_item_index < len(display_items):
-                    focal_item = display_items[focal_item_index]
+                if self.path_down_fn and listed_items and focal_item_index < len(listed_items):
+                    focal_item = listed_items[focal_item_index]
                     new_items, search_path_info = self.path_down_fn(
                             focal_item=focal_item,
                             selected_items=[focal_item])
@@ -1299,7 +1299,7 @@ class Selector(object): # {{{2
                 if keycode.name == "CTRL-W":
                     # <CTRL-W>: Cycle whole-path vs. basename matching
                     self.whole_path_matching = not self.whole_path_matching
-                    display_items = self.apply_query(current_query_chars, source_items)
+                    listed_items = self.apply_query(current_query_chars, source_items)
                 elif keycode.name == "CTRL-E":
                     # <CTRL-R>: Cycle matching-modes
                     if self.match_type == "literal":
@@ -1308,39 +1308,44 @@ class Selector(object): # {{{2
                         self.match_type = "literal"
                     else:
                         self.match_type = "fuzzy"
-                    display_items = self.apply_query(current_query_chars, source_items)
+                    listed_items = self.apply_query(current_query_chars, source_items)
                 elif keycode.name == "CTRL-I":
                     # <TAB>: toggle in multiselection mode; simply consume character otherwise
                     if self.multiselection_mode:
-                        display_items[focal_item_index].is_selected = not display_items[focal_item_index].is_selected
+                        listed_items[focal_item_index].is_selected = not listed_items[focal_item_index].is_selected
                 elif keycode.name == "CTRL-X":
                     # <CTRL-X>: Cancel all in multiselection mode; simply consume character otherwise
                     if self.multiselection_mode:
-                        for item in display_items:
+                        for item in listed_items:
                             item.is_selected = False
                 elif keycode.name == "CTRL-A":
                     # <CTRL-A>: Mark all in multiselection mode; simply consume character otherwise
                     if self.multiselection_mode:
-                        for item in display_items:
+                        for item in listed_items:
                             item.is_selected = True
                 elif keycode.name == "NUL":
                     # <CTRL-SPACE>: Invert selection
                     if self.multiselection_mode:
-                        for item in display_items:
+                        for item in listed_items:
                             item.is_selected = not item.is_selected
                 elif keycode.name == "CTRL-J" or keycode.name == "CTRL-M":
-                    if display_items and focal_item_index <= len(display_items):
-                        return self._extract_selected_from_display_items(
-                                display_items=display_items,
+                    if listed_items and focal_item_index <= len(listed_items):
+                        return self._extract_selected_from_listed_items(
+                                listed_items=listed_items,
                                 focal_item_index=focal_item_index)
                     else:
                         suppress_rewrite = True
                 elif keycode.name == "CTRL-G":
                     # <CTRL-G> info
+                    num_displayed_items = self.display.num_content_buffer_items()
+                    if len(listed_items) == num_displayed_items:
+                        num_items_metainfo = "{}".format(num_displayed_items)
+                    else:
+                        num_items_metainfo = "{} ({} hidden)".format(num_displayed_items, listed_items)
                     message = "{} of {}: {}".format(
                             focal_item_index+1,
-                            len(display_items),
-                            os.path.abspath(display_items[focal_item_index].filepath),
+                            num_items_metainfo,
+                            os.path.abspath(listed_items[focal_item_index].filepath),
                             )
                     self.display.message(
                             [message],
@@ -1357,43 +1362,43 @@ class Selector(object): # {{{2
                     # Delete/backspace
                     if current_query_chars:
                         current_query_chars.pop()
-                        display_items = self.apply_query(current_query_chars, source_items)
+                        listed_items = self.apply_query(current_query_chars, source_items)
                         focal_item_index = 0 # TODO: adjust this smartly
                 elif keycode.name == "CTRL-L" or keycode.name == "EVENT-RESIZE":
                     # do nothing: just re-write
                     # pass
                     self.display.stdscr.refresh()
-                    display_items = self.redisplay_all(
-                            items=display_items,
+                    self.redisplay_all(
+                            items=listed_items,
                             focal_item_index=focal_item_index,
                             query_chars=current_query_chars,
                             )
                 elif not keycode.is_special:
                     current_query_chars.append(keycode.name)
-                    display_items = self.apply_query(current_query_chars, source_items)
+                    listed_items = self.apply_query(current_query_chars, source_items)
                     focal_item_index = 0 # TODO: adjust this smartly
                 else:
                     # not supported
                     suppress_rewrite = True
                 if not suppress_rewrite:
-                    display_items = self.redisplay_all(
-                            items=display_items,
+                    self.redisplay_all(
+                            items=listed_items,
                             focal_item_index=focal_item_index,
                             query_chars=current_query_chars,
                             )
 
-    def _extract_selected_from_display_items(self, display_items, focal_item_index):
-        if display_items and focal_item_index <= len(display_items):
+    def _extract_selected_from_listed_items(self, listed_items, focal_item_index):
+        if listed_items and focal_item_index <= len(listed_items):
             if self.multiselection_mode:
-                display_items[focal_item_index].is_selected = True
-                return [item for item in display_items if item.is_selected]
+                listed_items[focal_item_index].is_selected = True
+                return [item for item in listed_items if item.is_selected]
             else:
-                return [display_items[focal_item_index]]
+                return [listed_items[focal_item_index]]
         else:
             return []
 
     def redisplay_all(self, items, focal_item_index, query_chars):
-        display_items = self.display.write_all(
+        self.display.write_all(
                 items=items,
                 focal_item_index=focal_item_index,
                 query_str="".join(query_chars),
@@ -1401,7 +1406,6 @@ class Selector(object): # {{{2
                 whole_path_matching=self.whole_path_matching,
                 search_path_info=self.search_path_info,
                 )
-        return display_items
 
     def redisplay_status_bar(self):
         return self.display.write_status_bar(
