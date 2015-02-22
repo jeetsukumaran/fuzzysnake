@@ -1165,6 +1165,12 @@ class Selector(object): # {{{2
                         self.display.fill_content_buffer()
                         self.display.refresh()
                         raise Selector.ResetSourcesException(source_items=new_items)
+                    else:
+                        # query status bar might be over-written with message
+                        self.render_query(
+                                query_chars=current_query_chars,
+                                focal_item_index=focal_item_index,
+                                )
             elif keycode.name == "RIGHT" or keycode.name == "CTRL-D":
                 if self.path_down_fn and display_items and focal_item_index < len(display_items):
                     focal_item = display_items[focal_item_index]
@@ -1176,6 +1182,12 @@ class Selector(object): # {{{2
                         self.display.fill_content_buffer()
                         self.display.refresh()
                         raise Selector.ResetSourcesException(source_items=new_items)
+                    else:
+                        # query status bar might be over-written with message
+                        self.render_query(
+                                query_chars=current_query_chars,
+                                focal_item_index=focal_item_index,
+                                )
             else:
                 # following all require full re-rendering
                 suppress_rerender = False
@@ -1276,6 +1288,15 @@ class Selector(object): # {{{2
                 search_path_info=self.search_path_info,
                 )
         return display_items
+
+    def render_query(self, query_chars, focal_item_index):
+        return self.display.render_query(
+                query_str="".join(query_chars),
+                match_type=self.match_type,
+                whole_path_matching=self.whole_path_matching,
+                focal_item_index=focal_item_index,
+                search_path_info=self.search_path_info,
+                )
 
     def run(self, items):
         while True:
@@ -1687,7 +1708,7 @@ class Controller(object): # {{{2
             self.args.search_paths = [os.path.normpath(os.path.relpath(new_dir))]
             items = self.scan_search_paths()
             if not items:
-                self.display.error("No valid sub-directories found under selected path")
+                self.display.error("No valid sub-directories available under selected path")
                 self.args.search_paths = old_search_paths
                 return None, None
             else:
