@@ -638,10 +638,16 @@ class Display(VisualInterface): # {{{2
 
     def write_query(self, query_str, match_type,):
         height, width = self.query_window_dimensions()
+        self.query_str = query_str
         prompt = self.match_type_prompts[match_type]
-        q = (prompt + query_str)[:width-1] # probably makes more sense to truncate front of query?
+        q = (prompt + self.query_str)[:width] # probably makes more sense to truncate front of query?
         self.query_length = len(q)
-        self.query_window.addstr(0, 0, q, self.prompt_color)
+        try:
+            self.query_window.addstr(0, 0, q.ljust(width), self.prompt_color)
+        except curses.error:
+            #   http://stackoverflow.com/questions/7063128/last-character-of-a-window-in-python-curses0
+            #   "writing the last character of a window is impossible with curses, for historical reasons."
+            pass
 
     ### Displaying
 
