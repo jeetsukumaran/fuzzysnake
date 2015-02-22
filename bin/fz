@@ -278,13 +278,22 @@ class VisualInterface(object): # {{{2
         # window.erase()
         blank_line = " " * (width)
         for row_idx in range(height):
-            if row_idx == height - 1:
-                # weird curses bug:
-                #   http://stackoverflow.com/questions/7063128/last-character-of-a-window-in-python-curses0
-                #   "writing the last character of a window is impossible with curses, for historical reasons."
-                window.addstr(row_idx, 0, blank_line[:-1], color)
-            else:
+            # if row_idx == height - 1:
+            #     # weird curses bug:
+            #     #   http://stackoverflow.com/questions/7063128/last-character-of-a-window-in-python-curses0
+            #     #   "writing the last character of a window is impossible with curses, for historical reasons."
+            #     window.addstr(row_idx, 0, blank_line[:-1], color)
+            # else:
+            #     window.addstr(row_idx, 0, blank_line, color)
+
+            # weird curses bug:
+            #   http://stackoverflow.com/questions/7063128/last-character-of-a-window-in-python-curses0
+            #   "writing the last character of a window is impossible with curses, for historical reasons."
+            #   But it turns out that you can trap and ignore the error
+            try:
                 window.addstr(row_idx, 0, blank_line, color)
+            except curses.error:
+                pass
 
     ### Input
 
@@ -433,15 +442,15 @@ class Display(VisualInterface): # {{{2
 
     def message(self, message_lines, color=None, vpadding=0, hpadding=2):
 
-        ### FOR DEBUGGING ###
-        message_lines = []
-        for y in range(100):
-            row = []
-            for x in range(100):
-                row.append("<y{},x{}>".format(y, x))
-            row = "|".join(row)
-            message_lines.append("0]" + row + "[$")
-        ### FOR DEBUGGING ###
+        # ### FOR DEBUGGING ###
+        # message_lines = []
+        # for y in range(100):
+        #     row = []
+        #     for x in range(100):
+        #         row.append("<y{},x{}>".format(y, x))
+        #     row = "|".join(row)
+        #     message_lines.append("0]" + row + "[$")
+        # ### FOR DEBUGGING ###
 
         available_height, available_width = self.content_buffer_available_display_dimensions()
         message_window = MessageWindow(
@@ -453,136 +462,8 @@ class Display(VisualInterface): # {{{2
                 vpadding=vpadding,
                 hpadding=hpadding,
                 )
-        # message_window.render()
-        # self.pause_for_keypress()
         message_window.show(self)
         return
-
-        # while True:
-        #     keycode = self.get_keycode(blocking=True, echo=False, focal_window=message_buffer)
-        #     if keycode is None:
-        #         continue
-        #     if keycode.name in self.CANCEL_KEYCODES_NAMES:
-        #         break
-        #     elif keycode.name == "UP" or keycode.name == "k":
-        #         view_y -= 1
-        #         if view_y < 0:
-        #             view_y = 0
-        #     elif keycode.name == "DOWN" or keycode.name == "j":
-        #         if view_y + view_height < message_buffer_height:
-        #             view_y += 1
-        #     elif keycode.name == "g":
-        #         view_y = 0
-        #     elif keycode.name == "G":
-        #         view_y = message_buffer_height - view_height
-        #     elif keycode.name == "LEFT" or keycode.name == "h":
-        #         view_x -= 1
-        #         if view_x < 0:
-        #             view_x = 0
-        #     elif keycode.name == "RIGHT" or keycode.name == "l":
-        #         if view_x + view_width < message_buffer_width:
-        #             view_x += 1
-        #     elif keycode.name == "0":
-        #         view_x = 0
-        #     elif keycode.name == "$":
-        #         view_x = message_buffer_width - view_width
-        #     _message_buffer_refresh()
-
-
-        # # message_lines = []
-        # # for y in range(100):
-        # #     row = []
-        # #     for x in range(100):
-        # #         row.append("<y{},x{}>".format(y, x))
-        # #     row = "|".join(row)
-        # #     message_lines.append("0]" + row + "[$")
-
-        # max_row_len = max(len(r) for r in message_lines)
-        # max_rows = len(message_lines) + (vpadding * 2)
-        # available_height, available_width = self.content_buffer_available_display_dimensions()
-        # available_height -= (vpadding * 2)
-        # available_width -= (hpadding * 2)
-        # view_height = min(max_rows, available_height-vpadding)
-        # view_width = min(max_row_len + 2, available_width - hpadding)
-        # view_pos_top = max(0, int((available_height-view_height)/2) + vpadding)
-        # view_pos_left = max(0, int((available_width-view_width)/2) + hpadding)
-        # view_y, view_x = 0, 0
-        # message_buffer_height = max_rows
-        # message_buffer_width = max_row_len + (hpadding * 2)
-        # message_buffer = curses.newpad(message_buffer_height, message_buffer_width)
-        # message_buffer.bkgdset(" ", color)
-        # # message_buffer.scrollok(0)
-        # def _message_buffer_refresh():
-        #     message_buffer.refresh(
-        #             view_y,
-        #             view_x,
-        #             view_pos_top,
-        #             view_pos_left,
-        #             view_pos_top + view_height - 1,
-        #             view_pos_left + view_width - 1,
-        #             )
-
-        # message_buffer.erase()
-        # for line_idx, line in enumerate(message_lines):
-        #     message_buffer.addstr(line_idx + vpadding, hpadding, line.ljust(message_buffer_width-(hpadding*2)), color)
-
-        # _message_buffer_refresh()
-
-        # while True:
-        #     keycode = self.get_keycode(blocking=True, echo=False, focal_window=message_buffer)
-        #     if keycode is None:
-        #         continue
-        #     if keycode.name in self.CANCEL_KEYCODES_NAMES:
-        #         break
-        #     elif keycode.name == "UP" or keycode.name == "k":
-        #         view_y -= 1
-        #         if view_y < 0:
-        #             view_y = 0
-        #     elif keycode.name == "DOWN" or keycode.name == "j":
-        #         if view_y + view_height < message_buffer_height:
-        #             view_y += 1
-        #     elif keycode.name == "g":
-        #         view_y = 0
-        #     elif keycode.name == "G":
-        #         view_y = message_buffer_height - view_height
-        #     elif keycode.name == "LEFT" or keycode.name == "h":
-        #         view_x -= 1
-        #         if view_x < 0:
-        #             view_x = 0
-        #     elif keycode.name == "RIGHT" or keycode.name == "l":
-        #         if view_x + view_width < message_buffer_width:
-        #             view_x += 1
-        #     elif keycode.name == "0":
-        #         view_x = 0
-        #     elif keycode.name == "$":
-        #         view_x = message_buffer_width - view_width
-        #     _message_buffer_refresh()
-
-        # panel = curses.panel.new_panel(message_buffer)
-        # message_buffer.erase()
-        # _message_buffer_refresh()
-
-        # screen_height, screen_width = self.screen_dimensions()
-        # height = min(20, screen_height)
-        # if width < 20:
-        #     self.abort("Screen too small to continue")
-        # pos_y = min(screen_height, int(screen_height / 2) - int(height/2))
-        # pos_x = int(screen_width / 4)
-        # width = int(screen_width/2)
-        # message_buffer = curses.newwin(height, width, pos_y, pos_x)
-        # message_buffer.erase()
-        # message_buffer.box()
-        # message = message[:width-2]
-        # message_buffer.addstr(2, 2, message)
-        # message_buffer.refresh()
-        # # panel = curses.panel.new_panel(message_buffer)
-        # self.pause_for_keypress()
-        # message_buffer.erase()
-        # message_buffer.refresh()
-        # if actions == 0:
-        #     self.pause_for_keypress()
-        # else:
-        #     raise NotImplementedError
 
     def error(self, message):
         self.message(
@@ -906,18 +787,21 @@ class MessageWindow(VisualInterface): # {{{2
         hpadding = " " * self.hpadding
         for line_idx, line in enumerate(self.message_lines):
             row_idx = line_idx + self.vpadding
-            self.message_buffer.addstr(
-                    row_idx,
-                    0,
-                    hpadding,
-                    self.color,
-                    )
-            self.message_buffer.addstr(
-                    row_idx,
-                    self.hpadding,
-                    line.ljust(self.message_buffer_width-self.hpadding)[:self.message_buffer_width-self.hpadding],
-                    self.color,
-                    )
+            try:
+                self.message_buffer.addstr(
+                        row_idx,
+                        0,
+                        hpadding,
+                        self.color,
+                        )
+                self.message_buffer.addstr(
+                        row_idx,
+                        self.hpadding,
+                        line.ljust(self.message_buffer_width-self.hpadding)[:self.message_buffer_width-self.hpadding],
+                        self.color,
+                        )
+            except curses.error:
+                pass
 
     def refresh(self):
         self.message_buffer.refresh(
@@ -1255,7 +1139,7 @@ class Selector(object): # {{{2
                         display_items = self.apply_query(current_query_chars, source_items)
                         focal_item_index = 0 # TODO: adjust this smartly
                 elif keycode.name == "q":
-                    self.display.message("hello", color=self.display.error_color, vpadding=2)
+                    self.display.message(["hello"], color=self.display.error_color, vpadding=0,)
                 elif not keycode.is_special:
                     current_query_chars.append(keycode.name)
                     display_items = self.apply_query(current_query_chars, source_items)
