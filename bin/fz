@@ -1721,7 +1721,12 @@ class Controller(object): # {{{2
             #     self.apply_action(filepaths, as_subprocess=True)
             filepath = focal_item.filepath
             if filepath:
-                self.apply_action(filepath, as_subprocess=True)
+                self.apply_action([filepath], as_subprocess=True)
+                # self.execute_command(
+                #         self.editor_path,
+                #         filepath,
+                #         verbose=False,
+                #         as_subprocess=True)
             return None, None
 
     def get_search_path_info(self):
