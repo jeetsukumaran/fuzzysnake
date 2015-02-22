@@ -515,12 +515,18 @@ class Display(VisualInterface): # {{{2
                 )
         return keycode
 
-    def status_bar_error_message(self, message):
-        esb = StatusBarMessageWindow(stdscr=self.stdscr, color=self.error_color)
+    def status_bar_message(self, message, color=None):
+        if color is None:
+            color = self.status_bar_color
+        esb = StatusBarMessageWindow(stdscr=self.stdscr, color=color)
         esb.write(message)
         keycode = self.pause_for_keypress()
         esb = None
         self.status_bar_window.refresh()
+        return keycode
+
+    def status_bar_error_message(self, message):
+        return self.status_bar_message(message=message, color=self.error_color)
 
     ### Rendering (Content)
 
@@ -1513,7 +1519,7 @@ class DirectorySource(object): # {{{2
                             whole_path_matching=False)
                     results.append(entry)
                     if self.max_items and len(results) > self.max_items:
-                        self.display.message(["Item limit reached: {}".format(self.max_items)])
+                        self.display.status_bar_error_message("Item limit reached: {}".format(self.max_items))
                         raise KeyboardInterrupt()
             # have to delete the names manually
             if fltr is not None:
