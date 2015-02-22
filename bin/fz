@@ -417,7 +417,7 @@ class Display(VisualInterface): # {{{2
         self.content_vscroll_offset = 0
         self.query_string = None
         self.query_length = 0
-        self.content_limit = 1000
+        self.content_buffer_item_capacity = None
         self.content_items = None
         self.focal_item_index = 0
         self.match_type_prompts = {
@@ -444,9 +444,10 @@ class Display(VisualInterface): # {{{2
     def new_content_buffer(self, nrows, fill=True):
         try:
             self.content_buffer = curses.newpad(nrows, self.screen_dimensions()[1])
+            self.content_buffer_item_capacity = nrows
         except curses.error:
-            pass ### REMOVE-2015-02-22
-            # self.content_buffer_allocation_failure(nrows)
+            self.content_buffer = curses.newpad(1, self.screen_dimensions()[1])
+            self.resize_content_buffer(nrows)
         if fill:
             self.fill_content_buffer()
         return self.content_buffer
@@ -456,6 +457,9 @@ class Display(VisualInterface): # {{{2
                 ("Content buffer allocation failure with {} items. Limit\n"
                 "the number of items using the '--item-limit' option or by\n"
                 "breaking up search into smaller subdirectories.".format(nrows)))
+
+    def num_content_buffer_items(self):
+        return min(len(self.content_items), self.content_buffer_item_capacity)
 
     def query_window_dimensions(self):
         return self.query_window.getmaxyx()
@@ -468,8 +472,24 @@ class Display(VisualInterface): # {{{2
         return screen_height - self.QUERY_WINDOW_HEIGHT - 1, screen_width
 
     def resize_content_buffer(self, nrows, fill=True):
-        self.content_buffer.resize(nrows, self.screen_dimensions()[1])
-        if fill:
+        factor = 1.0
+        self.content_buffer_item_capacity = 0
+
+        # self.content_buffer_item_capacity = 100
+        # self.content_buffer.resize(100, self.screen_dimensions()[1])
+
+        while True and factor > 0:
+            target_nrows = int(factor * nrows)
+            self.content_buffer.resize(target_nrows, self.screen_dimensions()[1])
+            h, w = self.content_buffer.getmaxyx()
+            if h == target_nrows:
+                self.content_buffer_item_capacity = h
+                break
+            factor = factor - 0.05
+
+        if not self.content_buffer_item_capacity:
+            self.content_buffer.erase()
+        elif fill:
             self.fill_content_buffer()
 
     def fill_content_buffer(self):
@@ -561,9 +581,10 @@ class Display(VisualInterface): # {{{2
         self.content_items = items
         if self.content_items:
             if len(self.content_items) > self.content_buffer_dimensions()[0]:
-                # self.new_content_buffer(len(self.content_items))
                 self.resize_content_buffer(len(self.content_items))
             for current_idx, item in enumerate(self.content_items):
+                if current_idx >= self.content_buffer_item_capacity:
+                    break
                 try:
                     self.write_content_item(current_idx, item, current_idx==focal_item_index)
                 except Display.OutOfWindowBoundsException:
@@ -659,9 +680,9 @@ class Display(VisualInterface): # {{{2
         self.content_buffer.erase()
 
     def refresh(self):
+        num_content_items = self.num_content_buffer_items()
         try:
             screen_height, screen_width = self.screen_dimensions()
-            num_content_items = len(self.content_items)
             content_height, content_width = self.content_buffer_dimensions()
             if content_height < 0:
                 if self.content_buffer_allocation_failure_extended_message:
@@ -680,7 +701,7 @@ class Display(VisualInterface): # {{{2
                         ))
                     self.content_buffer_allocation_failure_extended_message = False
                 self.status_bar_message(
-                        "{} undisplayed items (filter using query to reduce number)".format(num_content_items),
+                        "{} items (filter using query to reduce number to display)".format(len(self.content_items)),
                         blocking=False,
                         color=self.error_color,
                         )
@@ -764,7 +785,7 @@ class Display(VisualInterface): # {{{2
         # Since we display from the bottom up, moving 'up' or 'previous' means
         # moving to a *lower*-ring result, which requires *incrementing* the
         # index to move *down* the list, which is sorted incrementally by score.
-        new_item_index = min(len(self.content_items)-1, focal_item_index + count)
+        new_item_index = min(self.num_content_buffer_items()-1, focal_item_index + count)
         # new_item_index = focal_item_index + 1
         if new_item_index < 0:
             new_item_index = 0
