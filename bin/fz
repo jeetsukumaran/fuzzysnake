@@ -466,8 +466,12 @@ class Display(VisualInterface): # {{{2
         return
 
     def error(self, message):
+        if isinstance(message, str):
+            message_lines = message.split("\n")
+        else:
+            message_lines = message
         self.message(
-                message=message,
+                message_lines=message_lines,
                 color=self.error_color)
 
     def write_status_bar(self, s, color=None, refresh=True):
@@ -1138,8 +1142,6 @@ class Selector(object): # {{{2
                         current_query_chars.pop()
                         display_items = self.apply_query(current_query_chars, source_items)
                         focal_item_index = 0 # TODO: adjust this smartly
-                elif keycode.name == "q":
-                    self.display.message(["hello"], color=self.display.error_color, vpadding=0,)
                 elif not keycode.is_special:
                     current_query_chars.append(keycode.name)
                     display_items = self.apply_query(current_query_chars, source_items)
