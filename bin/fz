@@ -674,7 +674,7 @@ class Display(VisualInterface): # {{{2
                         )
             curses.doupdate()
         except Exception as e:
-            raise
+            pass
 
     ### Content Interaction
 
