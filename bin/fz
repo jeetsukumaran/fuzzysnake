@@ -155,9 +155,18 @@ class Subscreen(object): # {{{2
                 curses.curs_set(self.cursor_setting)
             except:
                 pass
-        curses.echo()
-        curses.nocbreak()
-        curses.endwin()
+        try:
+            curses.echo()
+        except curses.error:
+            pass
+        try:
+            curses.nocbreak()
+        except curses.error:
+            pass
+        try:
+            curses.endwin()
+        except curses.error:
+            pass
 
     def __enter__(self):
         self.clone_stdout()
@@ -1882,11 +1891,11 @@ class Controller(object): # {{{2
                 self.subscreen.restore_stdout()
                 for filepath in filepaths:
                     sys.stdout.write(filepath)
-                    sys.stdout.write(args.name_terminator)
+                    sys.stdout.write(self.args.name_terminator)
                     sys.stdout.flush()
                     if not self.args.quiet:
                         sys.stderr.write(filepath)
-                        sys.stderr.write(args.name_terminator)
+                        sys.stderr.write(self.args.name_terminator)
                 self.subscreen.clone_stdout()
                 if not as_subprocess:
                     self.exit(0)
@@ -1895,7 +1904,7 @@ class Controller(object): # {{{2
                 with out:
                     for filepath in filepaths:
                         out.write(filepath)
-                        out.write(args.name_terminator)
+                        out.write(self.args.name_terminator)
                 if not as_subprocess:
                     self.exit(0)
         else:
@@ -2009,7 +2018,7 @@ def parse_cli_args():  #{{{2
     search_options_section.add_argument(
             "-q", "--quiet",
             action="store_true",
-            default=False,
+            default=None,
             help="Run as silently as possible, e.g. do not echo commands being executed.")
     search_options_section.add_argument(
             "--no-progress-window",
@@ -2631,6 +2640,7 @@ def parse_cli_args():  #{{{2
                 ))
     parser.set_defaults(action_type="edit")
     args = parser.parse_args()
+
     if args.name_terminator is not None:
         if args.name_terminator == r'\0':
             args.name_terminator = chr(0)
@@ -2642,6 +2652,7 @@ def parse_cli_args():  #{{{2
         #     args.name_terminator = "|"
         # elif args.name_terminator == r'\\\\':
         #     args.name_terminator = r'\\'
+
     return args
 # }}}2
 

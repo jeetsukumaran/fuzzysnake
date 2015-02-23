@@ -7,16 +7,21 @@
 ## FuzzySnake
 bind '"\C-f": "fz\n"'
 
-## `fd`: select and go to a directory
-function fd() {
+## `fzd`: select and go to a directory
+function fzd() {
     # One-liner version: cd $(fz --stdout -d || echo ".")
-    DESTDIR=$(fz --stdout --single-selection -d $@ || echo "")
+    local DESTDIR=$(fz -q --stdout --single-selection -d $@ || echo "")
     if [ -n "$DESTDIR" ]
     then
         echo $(_get_abs_path "${DESTDIR}")
         cd "$DESTDIR"
     fi
     unset DESTDIR
+}
+
+## `fzl`: list files
+function fzl() {
+    fz -L $@
 }
 
 # supporting functions

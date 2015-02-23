@@ -417,10 +417,10 @@ These enhancements include:
 
     bind '"\C-f": "fz\n"'
 
-- A new command, `fd`, to change to a directory selected via `FuzzySnake`::
+- A command, `fzd`, to change to a directory selected via `FuzzySnake`::
 
-    function fd() {
-        DESTDIR=$(fz --stdout --single-selection -d $@ || echo "")
+    function fzd() {
+    local DESTDIR=$(fz -q --stdout --single-selection -d $@ || echo "")
         if [ -n "$DESTDIR" ]
         then
             echo $(_get_abs_path "${DESTDIR}")
@@ -428,6 +428,22 @@ These enhancements include:
         fi
         unset DESTDIR
     }
+
+- A command, `fzl`, to list the files in the selected search path(s)::
+
+    ## `fzl`: list files
+    function fzl() {
+        fz -q -L $@
+    }
+
+  This is more convenient than `find`, as it automatically ignores hidden and
+  version control directories, and allows for easy filtering for specific
+  types of files by, e.g. '``fzl --python``' or '``fzl --julia``'.
+
+- A command, `fze` to change directory to the selected file before opening it
+  for editing::
+
+
 
  Note that this can also be done with a one-liner if you do not care to have
  the absolute path to the directory that you are changing to to be printed::
@@ -485,9 +501,9 @@ of `FuzzySnake`::
 Acknowledgements
 ----------------
 
-`FuzzySnake` is based on (and includes code derived from) '`quickfind
-<https://github.com/Refefer/quickfind>`_' by Andrew Stanton, under version 2.0
-of the Apache License.
+`FuzzySnake` is based on some concepts and originally used some code from
+'`quickfind <https://github.com/Refefer/quickfind>`_' by Andrew Stanton, under
+version 2.0 of the Apache License.
 
 License
 -------
