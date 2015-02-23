@@ -233,10 +233,10 @@ class VisualInterface(object): # {{{2
         curses.init_pair(1, -1, -1)
         self.default_color = curses.color_pair(1)
 
-        curses.init_pair(2, curses.COLOR_MAGENTA, -1)
+        curses.init_pair(2, curses.COLOR_GREEN, -1)
         self.match_color = curses.color_pair(2) | curses.A_UNDERLINE
 
-        curses.init_pair(3, curses.COLOR_MAGENTA, -1)
+        curses.init_pair(3, curses.COLOR_CYAN, -1)
         self.is_selected_color = curses.color_pair(3) | curses.A_BOLD
 
         curses.init_pair(4, -1, -1)
@@ -610,7 +610,7 @@ class Display(VisualInterface): # {{{2
             self.content_buffer.addstr(row, 1, "> ", self.default_color)
             color = self.current_row_color
             # to reverse all parts of the line (included matched)
-            weight = curses.A_REVERSE
+            weight = curses.A_REVERSE | curses.A_BOLD
         else:
             self.content_buffer.addstr(row, 1, "  ", self.default_color)
         try:
