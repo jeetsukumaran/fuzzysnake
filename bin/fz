@@ -417,7 +417,7 @@ class Display(VisualInterface): # {{{2
         self.content_vscroll_offset = 0
         self.query_string = None
         self.query_length = 0
-        self.content_buffer_item_capacity = None
+        self.content_buffer_item_capacity = 0
         self.content_items = None
         self.focal_item_index = 0
         self.match_type_prompts = {
@@ -459,7 +459,10 @@ class Display(VisualInterface): # {{{2
                 "breaking up search into smaller subdirectories.".format(nrows)))
 
     def num_content_buffer_items(self):
-        return min(len(self.content_items), self.content_buffer_item_capacity)
+        try:
+            return min(len(self.content_items), self.content_buffer_item_capacity)
+        except TypeError:
+            return 0
 
     def query_window_dimensions(self):
         return self.query_window.getmaxyx()
@@ -1254,7 +1257,7 @@ class Selector(object): # {{{2
             keycode = self.display.get_query_keycode(echo=False)
             if keycode is None:
                 continue
-            if keycode.name == "ESC":
+            if keycode.name == "ESC" or keycode.name =="CTRL-C":
                 raise KeyboardInterrupt
             elif keycode.name == "UP" or keycode.name == "CTRL-P":
                 focal_item_index = self.display.move_focus_to_previous(focal_item_index)
@@ -1879,11 +1882,11 @@ class Controller(object): # {{{2
                 self.subscreen.restore_stdout()
                 for filepath in filepaths:
                     sys.stdout.write(filepath)
-                    sys.stdout.write("\n")
+                    sys.stdout.write(args.name_terminator)
                     sys.stdout.flush()
                     if not self.args.quiet:
                         sys.stderr.write(filepath)
-                        sys.stderr.write("\n")
+                        sys.stderr.write(args.name_terminator)
                 self.subscreen.clone_stdout()
                 if not as_subprocess:
                     self.exit(0)
@@ -1892,7 +1895,7 @@ class Controller(object): # {{{2
                 with out:
                     for filepath in filepaths:
                         out.write(filepath)
-                        out.write("\n")
+                        out.write(args.name_terminator)
                 if not as_subprocess:
                     self.exit(0)
         else:
@@ -1920,20 +1923,27 @@ class Controller(object): # {{{2
         if not selected:
             self.exit(1) # raise error to let parent shell know nothing was selected
         filepaths = [entry.filepath for entry in selected]
-        self.apply_action(filepaths, as_subprocess=False)
+        if filepaths:
+            self.apply_action(filepaths, as_subprocess=False)
+        return len(filepaths)
 
-    def print_list(self,
-            out=None,
-            mirror_to_stderr=False):
-        if out is None:
-            out = sys.stdout
+    def print_list(self, out=None):
         items = self.scan_search_paths()
         self.display.stop()
+        if out is None:
+            self.subscreen.restore_stdout()
+            out = sys.stdout
+            reclone_stdout = True
+        else:
+            reclone_stdout = False
         for item in items:
-            item_str = "{}\n".format(item.filepath)
+            item_str = "{}{}".format(item.filepath, self.args.name_terminator)
             out.write(item_str)
-            if mirror_to_stderr:
-                sys.stderr.write(item_str)
+        out.flush()
+        if reclone_stdout:
+            self.subscreen.clone_stdout()
+        self.display.restart()
+        # raise KeyboardInterrupt()
 
     def run_query(self):
         items = self.scan_search_paths()
@@ -1950,10 +1960,7 @@ class Controller(object): # {{{2
                 path_down_fn=self.path_down,
                 search_path_info=self.get_search_path_info(),
                 )
-        try:
-            selected = selector.run(items)
-        except KeyboardInterrupt:
-            self.exit(1) # error so no process will execute anything on blank output
+        selected = selector.run(items)
         return selected
 
 # }}}2
@@ -2578,14 +2585,14 @@ def parse_cli_args():  #{{{2
             action=SetPrintAction,
             dest="action_type",
             metavar="FILEPATH",
-            help="Prints the selected file or directory name to FILEPATH.")
+            help="Prints the selected file or directory name(s) to FILEPATH.")
     action_group.add_argument(
             "--stdout",
             action=SetPrintAction,
             dest="action_type",
             nargs=0,
             metavar="FILEPATH",
-            help="Prints the selected file or directory name to standard output.")
+            help="Prints the selected file or directory name(s) to standard output.")
     action_group.add_argument(
             "-o", "--open",
             action="store_const",
@@ -2611,9 +2618,31 @@ def parse_cli_args():  #{{{2
             "you to select a particular one, print the names to standard output. This option "
             "allows you to do, e.g., 'vim $(fz -L --python src/)' to quickly open all the "
             "Python files in the 'src/' subdirectory)")
-    parser.set_defaults(action_type="edit")
 
-    return parser.parse_args()
+    output_options_section = parser.add_argument_group("Output Options")
+    output_options_section.add_argument(
+            "-t", "--name-terminator",
+            default="\n",
+            help=(
+                "Character(s) to print after each file or directory name(s)"
+                " when executing '--stdout', '-p'/'--print', or"
+                " '-L'/'--list-and-exit' actions. You can specify 'NUL' by '\0',"
+                " the tab character by '\t', newline by '\n'."
+                ))
+    parser.set_defaults(action_type="edit")
+    args = parser.parse_args()
+    if args.name_terminator is not None:
+        if args.name_terminator == r'\0':
+            args.name_terminator = chr(0)
+        elif args.name_terminator == r'\t':
+            args.name_terminator = "\t"
+        elif args.name_terminator == r'\n':
+            args.name_terminator = "\n"
+        # elif args.name_terminator == r'\|':
+        #     args.name_terminator = "|"
+        # elif args.name_terminator == r'\\\\':
+        #     args.name_terminator = r'\\'
+    return args
 # }}}2
 
 class SetPrintAction(argparse.Action): # {{{2
@@ -2645,10 +2674,17 @@ def main(): # {{{1
     args = parse_cli_args()
     with Subscreen() as subscreen:
         controller = Controller(subscreen=subscreen, args=args)
-        if args.action_type == "list-and-exit":
-            controller.print_list()
-        else:
-            controller.run()
+        try:
+            if args.action_type == "list-and-exit":
+                num_items = controller.print_list()
+            else:
+                num_items = controller.run()
+        except KeyboardInterrupt:
+            num_items = 0
+    if not num_items:
+        sys.exit(1)
+    else:
+        sys.exit(0)
 # }}}1
 
 if __name__ == '__main__': # {{{1
