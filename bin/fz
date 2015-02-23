@@ -423,7 +423,7 @@ class Display(VisualInterface): # {{{2
         self.match_type_prompts = {
                 "fuzzy":   "? ",
                 "literal": "= ",
-                "reg-exp": "% ",
+                "regexp": "% ",
         }
         self.content_buffer_allocation_failure_extended_message = False
         self.start()
