@@ -2017,6 +2017,7 @@ def parse_cli_args():  #{{{2
     search_options_section.add_argument(
             "-r", "--recursion-limit", "--max-depth",
             dest="max_recursion_depth",
+            metavar="DEPTH",
             type=int,
             help="Maximum depth of sub-directories to recursively search. "
             "If not specified, recursion depth is unlimited. If 0, then "
@@ -2024,6 +2025,7 @@ def parse_cli_args():  #{{{2
     search_options_section.add_argument(
             "--item-limit", "--max-items",
             dest="max_content_items",
+            metavar="COUNT",
             type=int,
             help="Maximum number of items to find. If 0, then no limit.",
             )
@@ -2061,17 +2063,17 @@ def parse_cli_args():  #{{{2
     #         "is given as the separator token, and 'foo%(default)sbar' is "
     #         "typed as a query pattern, then names have match both 'foo'"
     #         "AND 'bar'.")
-    match_type_section = parser.add_argument_group("Match Mode Options",
-            "The following flags set the initial matching mode to be used. "
-            "You can cycle through match modes during a live search "
-            "by typing `<CTRL-R>`.")
+    match_type_section = parser.add_argument_group("Expression Options",
+            "The following flags set the initial expression type to be used. "
+            "You can cycle through expression type during a live search "
+            "by typing `<CTRL-E>`.")
     match_type_group = match_type_section.add_mutually_exclusive_group()
     match_type_group.add_argument(
             "-f", "--fuzzy",
             action="store_const",
             dest="match_type",
             const="fuzzy",
-            help="[DEFAULT] Fuzzy-matching mode: pattern is matched on a "
+            help="[DEFAULT] Fuzzy-expression: pattern is matched on a "
             "character-by-character basis, with characters required to "
             "occur in the same order as the pattern, but not necessarily "
             "consecutively (an arbitrary number of extra characters are "
@@ -2081,14 +2083,14 @@ def parse_cli_args():  #{{{2
             action="store_const",
             dest="match_type",
             const="regexp",
-            help="Regular-expression mode: patterns are matched as full "
+            help="Regular-expression: patterns are matched as full "
             "(Python) regular expression patterns.")
     match_type_group.add_argument(
             "-l", "--literal",
             action="store_const",
             dest="match_type",
             const="literal",
-            help="Literal-matching mode: patterns are matched exactly as "
+            help="Literal-expression: patterns are matched exactly as "
             "given.")
     parser.set_defaults(match_type="fuzzy")
 
