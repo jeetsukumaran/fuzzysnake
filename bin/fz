@@ -116,18 +116,30 @@ def truncate_middle(line, length=70, truncation_str="..."):
 
 class Subscreen(object): # {{{2
 
-    def clone_stdout(self):
-        # clone stdout: this allows us to open
-        # the curses window in a subshell and
-        # print the result to the "real" stdout
-        # on exit
+    def redirect_standard_channels(self):
+        # clone stdout and stderr: this allows us to open the curses window in
+        # a subshell and print the result to the "real" stdout on exit
+
+        # standard output
         self.prev_stdout_fd = os.dup(sys.stdout.fileno())
         self.new_stdout_clone = os.open("/dev/tty", os.O_WRONLY)
-        os.dup2(self.new_stdout_clone, sys.stdout.fileno()) # 1
+        os.dup2(self.new_stdout_clone, sys.stdout.fileno())
         self.prev_stdout = sys.stdout
 
-    def restore_stdout(self):
-        # restore standard output
+        # standard error
+        self.prev_stderr_fd = os.dup(sys.stderr.fileno())
+        self.new_stderr_clone = os.open("/dev/tty", os.O_WRONLY)
+        os.dup2(self.new_stderr_clone, sys.stderr.fileno())
+        self.prev_stderr = sys.stderr
+
+    def restore_standard_channels(self):
+        # restore standard output and standard error
+
+        # standard error
+        os.dup2(self.prev_stderr_fd, self.prev_stderr.fileno())
+        sys.stderr = self.prev_stderr
+
+        # standard output
         os.dup2(self.prev_stdout_fd, self.prev_stdout.fileno())
         sys.stdout = self.prev_stdout
 
@@ -169,14 +181,14 @@ class Subscreen(object): # {{{2
             pass
 
     def __enter__(self):
-        self.clone_stdout()
+        self.redirect_standard_channels()
         self.start_stdscr()
         # return self.stdscr
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
         self.stop_stdscr()
-        self.restore_stdout()
+        self.restore_standard_channels()
 
 # }}}2
 
@@ -1881,32 +1893,31 @@ class Controller(object): # {{{2
     def apply_action(self, filepaths, as_subprocess=False):
         self.display.stop()
         if self.args.action_type == "edit":
-            self.execute_command(self.editor_path, filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
+            self.execute_command(self.editor_path, filepaths, verbose=self.args.echo_action_to_stderr, as_subprocess=as_subprocess)
         elif self.args.action_type == "open":
-            self.execute_command("open", filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
+            self.execute_command("open", filepaths, verbose=self.args.echo_action_to_stderr, as_subprocess=as_subprocess)
         elif self.args.action_type == "command":
-            self.execute_command(self.args.action_target, filepaths, verbose=not self.args.quiet, as_subprocess=as_subprocess)
+            self.execute_command(self.args.action_target, filepaths, verbose=self.args.echo_action_to_stderr, as_subprocess=as_subprocess)
         elif self.args.action_type == "print":
             if not hasattr(self.args, "action_target") or self.args.action_target == "-":
-                self.subscreen.restore_stdout()
+                self.subscreen.restore_standard_channels()
                 for filepath in filepaths:
-                    p = self.compose_output_path(filepath)
+                    p = self.compose_output_path(filepath) + self.args.name_terminator
                     sys.stdout.write(p)
-                    sys.stdout.write(self.args.name_terminator)
                     sys.stdout.flush()
-                    if not self.args.quiet:
+                    if self.args.echo_selection_to_stderr:
                         sys.stderr.write(p)
-                        sys.stderr.write(self.args.name_terminator)
-                self.subscreen.clone_stdout()
+                self.subscreen.redirect_standard_channels()
                 if not as_subprocess:
                     self.exit(0)
             else:
                 out = open(os.path.expandvars(os.path.expanduser(self.args.action_target)), "w")
                 with out:
                     for filepath in filepaths:
-                        p = self.compose_output_path(filepath)
+                        p = self.compose_output_path(filepath) + self.args.name_terminator
                         out.write(p)
-                        out.write(self.args.name_terminator)
+                        if self.args.echo_selection_to_stderr:
+                            sys.stderr.write(p)
                 if not as_subprocess:
                     self.exit(0)
         else:
@@ -1917,13 +1928,13 @@ class Controller(object): # {{{2
                 self.display.error(error_msg)
 
     def execute_command(self, *args, **kwargs):
-        self.subscreen.restore_stdout()
+        self.subscreen.restore_standard_channels()
         try:
             execute_command(*args, **kwargs)
         except OSError as e:
             error_msg = "Error executing command: {}".format(" ".join(e.command_tokens))
             self.exit(error_msg)
-        self.subscreen.clone_stdout()
+        self.subscreen.redirect_standard_channels()
 
     def exit(self, exit_arg):
         self.display.stop()
@@ -1941,18 +1952,16 @@ class Controller(object): # {{{2
     def print_list(self, out=None):
         items = self.scan_search_paths()
         self.display.stop()
+        self.subscreen.restore_standard_channels()
         if out is None:
-            self.subscreen.restore_stdout()
             out = sys.stdout
-            reclone_stdout = True
-        else:
-            reclone_stdout = False
         for item in items:
             item_str = "{}{}".format(self.compose_output_path(item.filepath), self.args.name_terminator)
             out.write(item_str)
+            if self.args.echo_selection_to_stderr:
+                sys.stderr.write(item_str)
         out.flush()
-        if reclone_stdout:
-            self.subscreen.clone_stdout()
+        self.subscreen.redirect_standard_channels()
         self.display.restart()
         # raise KeyboardInterrupt()
 
@@ -2024,11 +2033,6 @@ def parse_cli_args():  #{{{2
             dest="multiselection_mode",
             default=True,
             help="Do not allow multiple entries to be marked/unmarked for selection using <TAB>.")
-    search_options_section.add_argument(
-            "-q", "--quiet",
-            action="store_true",
-            default=None,
-            help="Run as silently as possible, e.g. do not echo commands being executed.")
     search_options_section.add_argument(
             "--no-progress-window",
             action="store_true",
@@ -2655,6 +2659,18 @@ def parse_cli_args():  #{{{2
                 " when executing '--stdout', '-p'/'--print', or"
                 " '-L'/'--list-and-exit' actions."
                 ))
+    output_options_section.add_argument(
+            "--echo-selection-to-stderr",
+            action="store_true",
+            help=(
+                "Write selection to standard error"
+                " when executing '--stdout', '-p'/'--print', or"
+                " '-L'/'--list-and-exit' actions."
+                ))
+    output_options_section.add_argument(
+            "--echo-action-to-stderr",
+            action="store_true",
+            help="Write action commands to standard error.")
     parser.set_defaults(action_type="edit")
     args = parser.parse_args()
 
