@@ -420,10 +420,9 @@ These enhancements include:
 - A command, `fzd`, to change to a directory selected via `FuzzySnake`::
 
     function fzd() {
-    local DESTDIR=$(fz -q --stdout --single-selection -d $@ || echo "")
+    local DESTDIR=$(fz --stdout --single-selection -d $@ || echo "")
         if [ -n "$DESTDIR" ]
         then
-            echo $(_get_abs_path "${DESTDIR}")
             cd "$DESTDIR"
         fi
         unset DESTDIR
@@ -440,8 +439,38 @@ These enhancements include:
   version control directories, and allows for easy filtering for specific
   types of files by, e.g. '``fzl --python``' or '``fzl --julia``'.
 
-- A command, `fze` to change directory to the selected file before opening it
-  for editing::
+- A command, `fzw` to change directory to the selected file before opening it
+  for editing (the "w" stands for "work")::
+
+    function fzw() {
+        local DIR
+        local FILENAME
+        local AGENT
+        local SELECTED=$(fz --stdout --single-selection $@ || echo "")
+        if [ -n "$FUZZYSNAKE_EDITOR" ]
+        then
+            AGENT="$FUZZYSNAKE_EDITOR"
+        elif [ -n "$EDITOR" ]
+        then
+            AGENT="$FUZZYSNAKE_EDITOR"
+        else
+            AGENT="vi"
+        fi
+        if [ -n "$SELECTED" ]
+        then
+            SELECTED=$(_get_abs_path "${SELECTED}")
+            DIR=$(dirname "$SELECTED" || echo "")
+            if [ -n $DIR ]
+            then
+                cd $DIR
+                $AGENT $SELECTED
+            fi
+        fi
+        unset DIR
+        unset FILENAME
+        unset AGENT
+        unset SELECTED
+    }
 
 
 

@@ -9,11 +9,11 @@ bind '"\C-f": "fz\n"'
 
 ## `fzd`: select and go to a directory
 function fzd() {
-    # One-liner version: cd $(fz --stdout -d || echo ".")
-    local DESTDIR=$(fz -q --stdout --single-selection -d $@ || echo "")
+    # One-liner version: cd $(fz --stdout --single-selection -q -d || echo ".")
+    local DESTDIR=$(fz --stdout --single-selection -d $@ || echo "")
     if [ -n "$DESTDIR" ]
     then
-        echo $(_get_abs_path "${DESTDIR}")
+        echo $DESTDIR
         cd "$DESTDIR"
     fi
     unset DESTDIR
@@ -22,6 +22,47 @@ function fzd() {
 ## `fzl`: list files
 function fzl() {
     fz -L $@
+}
+
+## `fzw` ("w" for "work"): change to directory of selected and edit
+function fzw() {
+    local DIR
+    local FILENAME
+    local AGENT
+    local SELECTED=$(fz --stdout --single-selection $@ || echo "")
+    if [ -n "$FUZZYSNAKE_EDITOR" ]
+    then
+        AGENT="$FUZZYSNAKE_EDITOR"
+    elif [ -n "$EDITOR" ]
+    then
+        AGENT="$FUZZYSNAKE_EDITOR"
+    else
+        AGENT="vi"
+    fi
+    if [ -n "$SELECTED" ]
+    then
+        SELECTED=$(_get_abs_path "${SELECTED}")
+        DIR=$(dirname "$SELECTED" || echo "")
+        if [ -n $DIR ]
+        then
+            cd $DIR
+            $AGENT $SELECTED
+        fi
+    fi
+    unset DIR
+    unset FILENAME
+    unset AGENT
+    unset SELECTED
+}
+
+## `fzclip`: copy selected to clipboard
+function fzclip() {
+    if [ -z "$FUZZYSNAKE_CLIPBOARD_COPY_COMMAND" ]
+    then
+        echo "\$FUZZYSNAKE_CLIPBOARD_COPY_COMMAND not set"
+        return
+    fi
+    $(fz --stdout $@ | $FUZZYSNAKE_CLIPBOARD_COPY_COMMAND)
 }
 
 # supporting functions
