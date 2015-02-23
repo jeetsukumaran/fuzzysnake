@@ -2139,7 +2139,7 @@ def parse_cli_args():  #{{{2
             action="append_const",
             dest="target_filename_pattern",
             const=r".*\.cpp$|.*\.cc$|.*\.cxx$|.*\.c\+\+$|.*\.c$|.*\.m$|.*\.hpp$|.*\.hh$|.*\.h$|.*\.hxx|.*\.h\+\+$|.*\.inc$",
-            help="C++ and C)")
+            help="C++ and C")
     target_type_options.add_argument(
             "--csharp",
             action="append_const",
@@ -2303,6 +2303,12 @@ def parse_cli_args():  #{{{2
             const=r".*\.nex$|.*\.nexus$|.*\.nxs$|.*\.mb$|.*\trees$",
             help="NEXUS")
     target_type_options.add_argument(
+            "--nexml",
+            action="append_const",
+            dest="target_filename_pattern",
+            const=r".*\.nexml$|.*\.xml$",
+            help="NEXML (including 'XML')")
+    target_type_options.add_argument(
             "--objc",
             action="append_const",
             dest="target_filename_pattern",
@@ -2355,7 +2361,7 @@ def parse_cli_args():  #{{{2
             action="append_const",
             dest="target_filename_pattern",
             const=r".*\.nex$|.*\.nexus$|.*\.nxs$|.*\.mb$|.*\.fas$|.*\.fasta$|.*\.tre$|.*\.trees$|.*\.xml$|.*\.dat$|.*\.nexml$|.*\.newick$|.*\.phylip$|.*\.aln$",
-            help="Phylogenetics")
+            help="Phylogenetics (NEXUS, NEWICK, PHYLIP, (Ne)XML, etc.)")
     target_type_options.add_argument(
             "--plone",
             action="append_const",
