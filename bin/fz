@@ -2153,6 +2153,12 @@ def parse_cli_args():  #{{{2
             const=r".*\.css$",
             help="CSS")
     target_type_options.add_argument(
+            "--csv",
+            action="append_const",
+            dest="target_filename_pattern",
+            const=r".*\.csv$",
+            help="Comma-separated values")
+    target_type_options.add_argument(
             "--dart",
             action="append_const",
             dest="target_filename_pattern",
@@ -2453,6 +2459,12 @@ def parse_cli_args():  #{{{2
             const=r".*\.txt$",
             help="Plain text")
     target_type_options.add_argument(
+            "--tsv",
+            action="append_const",
+            dest="target_filename_pattern",
+            const=r".*\.tsv$",
+            help="Tab-separated values")
+    target_type_options.add_argument(
             "--tt",
             action="append_const",
             dest="target_filename_pattern",
@@ -2488,6 +2500,12 @@ def parse_cli_args():  #{{{2
             dest="target_filename_pattern",
             const=r".*\.xml$|.*\.dtd$|.*\.xsl$|.*\.xslt$|.*\.ent$",
             help="XML")
+    target_type_options.add_argument(
+            "--xsv",
+            action="append_const",
+            dest="target_filename_pattern",
+            const=r".*\.csv$|.*\.tsv$",
+            help="General value-delimited/separated values")
     target_type_options.add_argument(
             "--yaml",
             action="append_const",
