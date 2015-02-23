@@ -1890,11 +1890,12 @@ class Controller(object): # {{{2
             if not hasattr(self.args, "action_target") or self.args.action_target == "-":
                 self.subscreen.restore_stdout()
                 for filepath in filepaths:
-                    sys.stdout.write(filepath)
+                    p = self.compose_output_path(filepath)
+                    sys.stdout.write(p)
                     sys.stdout.write(self.args.name_terminator)
                     sys.stdout.flush()
                     if not self.args.quiet:
-                        sys.stderr.write(filepath)
+                        sys.stderr.write(p)
                         sys.stderr.write(self.args.name_terminator)
                 self.subscreen.clone_stdout()
                 if not as_subprocess:
@@ -1903,7 +1904,8 @@ class Controller(object): # {{{2
                 out = open(os.path.expandvars(os.path.expanduser(self.args.action_target)), "w")
                 with out:
                     for filepath in filepaths:
-                        out.write(filepath)
+                        p = self.compose_output_path(filepath)
+                        out.write(p)
                         out.write(self.args.name_terminator)
                 if not as_subprocess:
                     self.exit(0)
@@ -1946,13 +1948,20 @@ class Controller(object): # {{{2
         else:
             reclone_stdout = False
         for item in items:
-            item_str = "{}{}".format(item.filepath, self.args.name_terminator)
+            item_str = "{}{}".format(self.compose_output_path(item.filepath), self.args.name_terminator)
             out.write(item_str)
         out.flush()
         if reclone_stdout:
             self.subscreen.clone_stdout()
         self.display.restart()
         # raise KeyboardInterrupt()
+
+    def compose_output_path(self, path):
+        if self.args.output_relative_paths:
+            f = os.path.relpath(path)
+        else:
+            f = os.path.abspath(path)
+        return f
 
     def run_query(self):
         items = self.scan_search_paths()
@@ -2637,6 +2646,14 @@ def parse_cli_args():  #{{{2
                 " when executing '--stdout', '-p'/'--print', or"
                 " '-L'/'--list-and-exit' actions. You can specify 'NUL' by '\0',"
                 " the tab character by '\t', newline by '\n'."
+                ))
+    output_options_section.add_argument(
+            "--output-relative-paths",
+            action="store_true",
+            help=(
+                "Print relative paths instead of absolute"
+                " when executing '--stdout', '-p'/'--print', or"
+                " '-L'/'--list-and-exit' actions."
                 ))
     parser.set_defaults(action_type="edit")
     args = parser.parse_args()
