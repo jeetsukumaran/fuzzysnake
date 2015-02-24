@@ -441,6 +441,7 @@ class Display(VisualInterface): # {{{2
         self.content_buffer_item_capacity = 0
         self.content_items = None
         self.focal_item_index = 0
+        self.display_absolute_paths = False
         self.match_type_prompts = {
                 "fuzzy":   "? ",
                 "literal": "= ",
@@ -606,6 +607,8 @@ class Display(VisualInterface): # {{{2
             focal_item_index,
             display_absolute_paths=None,
             ):
+        if display_absolute_paths is not None:
+            self.display_absolute_paths = display_absolute_paths
         self.content_buffer.erase()
         self.content_items = items
         if self.content_items:
@@ -618,7 +621,6 @@ class Display(VisualInterface): # {{{2
                     self.write_content_item(current_idx,
                             item,
                             current_idx==focal_item_index,
-                            display_absolute_paths=display_absolute_paths,
                             )
                 except Display.OutOfWindowBoundsException:
                     break
@@ -628,13 +630,12 @@ class Display(VisualInterface): # {{{2
             item_index,
             item,
             is_focal_item,
-            display_absolute_paths=None,
             ):
         height, width = self.content_buffer_dimensions()
         row = height - item_index - 1
         if row < 0:
             raise Display.OutOfWindowBoundsException
-        if display_absolute_paths:
+        if self.display_absolute_paths:
             display_name = os.path.abspath(item.filepath)
         else:
             display_name = item.display_name
