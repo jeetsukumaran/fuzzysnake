@@ -1135,6 +1135,12 @@ class Entry(object):
         self._match_end_offset = match_end
         self.is_selected = is_selected
 
+    def clear_metadata(self):
+        self.score = 0
+        self.match_start = 0
+        self.match_end = 0
+        self.is_selected = False
+
     def _get_match_target(self):
         if self.whole_path_matching:
             return self.filepath
@@ -1287,10 +1293,7 @@ class Selector(object): # {{{2
                     item.match_end = match_end
                     queried_items_items.append(item)
                 else:
-                    item.score = 0
-                    item.match_start = 0
-                    item.match_end = 0
-                    item.is_selected = False
+                    item.clear_metadata()
             return sorted(queried_items_items, key=lambda x: x.score)
 
     def _loop(self, source_items):
@@ -1423,8 +1426,14 @@ class Selector(object): # {{{2
                     # Delete/backspace
                     if current_query_chars:
                         current_query_chars.pop()
-                        listed_items = self.apply_query(current_query_chars, source_items)
+                        if len(current_query_chars) > 0:
+                            listed_items = self.apply_query(current_query_chars, source_items)
+                        else:
+                            listed_items = list(source_items)
+                            for item in listed_items:
+                                item.clear_metadata()
                         focal_item_index = 0 # TODO: adjust this smartly
+
                 elif keycode.name == "CTRL-L" or keycode.name == "EVENT-RESIZE":
                     # do nothing: just re-write
                     # pass
