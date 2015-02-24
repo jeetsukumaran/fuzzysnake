@@ -444,7 +444,6 @@ These enhancements include:
 
     function fzw() {
         local DIR
-        local FILENAME
         local AGENT
         local SELECTED=$(fz --stdout --single-selection $@ || echo "")
         if [ -n "$FUZZYSNAKE_EDITOR" ]
@@ -458,7 +457,6 @@ These enhancements include:
         fi
         if [ -n "$SELECTED" ]
         then
-            SELECTED=$(_get_abs_path "${SELECTED}")
             DIR=$(dirname "$SELECTED" || echo "")
             if [ -n $DIR ]
             then
@@ -467,7 +465,6 @@ These enhancements include:
             fi
         fi
         unset DIR
-        unset FILENAME
         unset AGENT
         unset SELECTED
     }

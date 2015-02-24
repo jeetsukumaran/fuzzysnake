@@ -19,6 +19,22 @@ function fzd() {
     unset DESTDIR
 }
 
+## `fzfd`: select file, and change to its directory
+function fzfd() {
+    local DIR
+    local SELECTED=$(fz --stdout --single-selection $@ || echo "")
+    if [ -n "$SELECTED" ]
+    then
+        DIR=$(dirname "$SELECTED" || echo "")
+        if [ -n $DIR ]
+        then
+            cd $DIR
+        fi
+    fi
+    unset DIR
+    unset SELECTED
+}
+
 ## `fzl`: list files
 function fzl() {
     fz -L $@
@@ -27,7 +43,6 @@ function fzl() {
 ## `fzw` ("w" for "work"): change to directory of selected and edit
 function fzw() {
     local DIR
-    local FILENAME
     local AGENT
     local SELECTED=$(fz --stdout --single-selection $@ || echo "")
     if [ -n "$FUZZYSNAKE_EDITOR" ]
@@ -41,7 +56,6 @@ function fzw() {
     fi
     if [ -n "$SELECTED" ]
     then
-        SELECTED=$(_get_abs_path "${SELECTED}")
         DIR=$(dirname "$SELECTED" || echo "")
         if [ -n $DIR ]
         then
