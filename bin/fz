@@ -584,9 +584,14 @@ class Display(VisualInterface): # {{{2
             query_str,
             match_type,
             whole_path_matching,
+            display_absolute_paths=None,
             search_path_info=None,
             ):
-        self.write_content_items(items, focal_item_index)
+        self.write_content_items(
+                items,
+                focal_item_index,
+                display_absolute_paths=display_absolute_paths,
+                )
         self.write_status_bar(
                 match_type=match_type,
                 whole_path_matching=whole_path_matching,
@@ -596,7 +601,11 @@ class Display(VisualInterface): # {{{2
         self.focal_item_index = focal_item_index
         self.refresh()
 
-    def write_content_items(self, items, focal_item_index):
+    def write_content_items(self,
+            items,
+            focal_item_index,
+            display_absolute_paths=None,
+            ):
         self.content_buffer.erase()
         self.content_items = items
         if self.content_items:
@@ -606,7 +615,11 @@ class Display(VisualInterface): # {{{2
                 if current_idx >= self.content_buffer_item_capacity:
                     break
                 try:
-                    self.write_content_item(current_idx, item, current_idx==focal_item_index)
+                    self.write_content_item(current_idx,
+                            item,
+                            current_idx==focal_item_index,
+                            display_absolute_paths=display_absolute_paths,
+                            )
                 except Display.OutOfWindowBoundsException:
                     break
         return self.content_items
@@ -614,15 +627,21 @@ class Display(VisualInterface): # {{{2
     def write_content_item(self,
             item_index,
             item,
-            is_focal_item):
+            is_focal_item,
+            display_absolute_paths=None,
+            ):
         height, width = self.content_buffer_dimensions()
         row = height - item_index - 1
         if row < 0:
             raise Display.OutOfWindowBoundsException
+        if display_absolute_paths:
+            display_name = os.path.abspath(item.filepath)
+        else:
+            display_name = item.display_name
         # self.content_buffer.move(row, 0)
         # self.content_buffer.clrtoeol()
         # -4: account for leader, and avoid writing at last position
-        display_name = truncate_middle(item.display_name, width-3).ljust(width-3)
+        display_name = truncate_middle(display_name, width-3).ljust(width-3)
         weight = curses.A_NORMAL
         color = self.default_color
         if item.is_selected:
@@ -1193,6 +1212,12 @@ class Selector(object): # {{{2
         "                   regular, or literal.",
         "<CTRL-W>           Toggle between matching whole path or just",
         "                   basename.",
+        "",
+        "Display",
+        "-------",
+        "<CTRL-R>           Toggle between display whole or relative",
+        "                   paths",
+        "",
         "Selection",
         "---------",
         "<TAB>              Toggle selection of current focal item.",
@@ -1227,6 +1252,7 @@ class Selector(object): # {{{2
             multiselection_mode=True,
             path_up_fn=None,
             path_down_fn=None,
+            display_absolute_paths=None,
             search_path_info=None,
             ):
         self.display = display
@@ -1236,6 +1262,7 @@ class Selector(object): # {{{2
         self.multiselection_mode = multiselection_mode
         self.path_up_fn = path_up_fn
         self.path_down_fn = path_down_fn
+        self.display_absolute_paths = display_absolute_paths
         self.search_path_info = search_path_info
 
     def apply_query(self, query_chars, source_items):
@@ -1321,7 +1348,7 @@ class Selector(object): # {{{2
                     self.whole_path_matching = not self.whole_path_matching
                     listed_items = self.apply_query(current_query_chars, source_items)
                 elif keycode.name == "CTRL-E":
-                    # <CTRL-R>: Cycle matching-modes
+                    # <CTRL-E>: Cycle matching-modes
                     if self.match_type == "literal":
                         self.match_type = "regexp"
                     elif self.match_type == "fuzzy":
@@ -1355,6 +1382,8 @@ class Selector(object): # {{{2
                                 focal_item_index=focal_item_index)
                     else:
                         suppress_rewrite = True
+                elif keycode.name == "CTRL-R":
+                    self.display_absolute_paths = not self.display_absolute_paths
                 elif keycode.name == "CTRL-G":
                     # <CTRL-G> info
                     num_displayed_items = self.display.num_content_buffer_items()
@@ -1435,6 +1464,7 @@ class Selector(object): # {{{2
                 query_str="".join(query_chars),
                 match_type=self.match_type,
                 whole_path_matching=self.whole_path_matching,
+                display_absolute_paths=self.display_absolute_paths,
                 search_path_info=self.search_path_info,
                 )
 
@@ -1985,6 +2015,7 @@ class Controller(object): # {{{2
                 multiselection_mode=self.args.multiselection_mode,
                 path_up_fn=self.path_up,
                 path_down_fn=self.path_down,
+                display_absolute_paths=self.args.display_absolute_paths,
                 search_path_info=self.get_search_path_info(),
                 )
         selected = selector.run(items)
@@ -2040,6 +2071,12 @@ def parse_cli_args():  #{{{2
             action="store_true",
             default=False,
             help="Do not show progress of filesystem scanning.")
+    search_options_section.add_argument(
+            "--display-absolute-paths",
+            action="store_false",
+            dest="display_absolute_paths",
+            default=True,
+            help="Show absolute paths instead of relative paths in viewer.")
 
     query_options_section = parser.add_argument_group("Query Options")
     query_options_section.add_argument(
