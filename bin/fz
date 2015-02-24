@@ -441,7 +441,11 @@ class Display(VisualInterface): # {{{2
         self.content_buffer_item_capacity = 0
         self.content_items = None
         self.focal_item_index = 0
+        self.whole_path_matching = None
+        self.match_type = None
         self.display_absolute_paths = False
+        self.display_split_filename_and_dirname = False
+        self.max_filename_len = 0
         self.match_type_prompts = {
                 "fuzzy":   "? ",
                 "literal": "= ",
@@ -583,22 +587,24 @@ class Display(VisualInterface): # {{{2
             items,
             focal_item_index,
             query_str,
-            match_type,
-            whole_path_matching,
+            match_type=None,
+            whole_path_matching=None,
             display_absolute_paths=None,
+            display_split_filename_and_dirname=None,
             search_path_info=None,
             ):
+        if match_type is not None:
+            self.match_type = match_type
+        if whole_path_matching is not None:
+            self.whole_path_matching = whole_path_matching
         self.write_content_items(
                 items,
                 focal_item_index,
                 display_absolute_paths=display_absolute_paths,
+                display_split_filename_and_dirname=display_split_filename_and_dirname,
                 )
-        self.write_status_bar(
-                match_type=match_type,
-                whole_path_matching=whole_path_matching,
-                search_path_info=search_path_info,
-                )
-        self.write_query(query_str=query_str, match_type=match_type)
+        self.write_status_bar(search_path_info=search_path_info)
+        self.write_query(query_str=query_str)
         self.focal_item_index = focal_item_index
         self.refresh()
 
@@ -606,14 +612,30 @@ class Display(VisualInterface): # {{{2
             items,
             focal_item_index,
             display_absolute_paths=None,
+            display_split_filename_and_dirname=None,
             ):
         if display_absolute_paths is not None:
             self.display_absolute_paths = display_absolute_paths
+        if display_split_filename_and_dirname is not None and display_split_filename_and_dirname is not self.display_split_filename_and_dirname:
+            self.display_split_filename_and_dirname = display_split_filename_and_dirname
         self.content_buffer.erase()
         self.content_items = items
         if self.content_items:
             if len(self.content_items) > self.content_buffer_dimensions()[0]:
                 self.resize_content_buffer(len(self.content_items))
+            height, width = self.content_buffer_dimensions()
+            if self.display_split_filename_and_dirname:
+                to_process = self.content_items[:self.num_content_buffer_items()]
+                self.max_filename_len = max(len(item.filename) for item in to_process)
+                remaining_len = width - self.max_filename_len - 5
+                for item in to_process:
+                    if self.display_absolute_paths:
+                        dirname = os.path.abspath(item.dirname)
+                    else:
+                        dirname = item.dirname
+                    item.split_display_name = "{} {}".format(
+                            item.filename.ljust(self.max_filename_len, " "),
+                            truncate_middle(dirname, remaining_len).ljust(remaining_len))[:width]
             for current_idx, item in enumerate(self.content_items):
                 if current_idx >= self.content_buffer_item_capacity:
                     break
@@ -621,6 +643,8 @@ class Display(VisualInterface): # {{{2
                     self.write_content_item(current_idx,
                             item,
                             current_idx==focal_item_index,
+                            height=height,
+                            width=width,
                             )
                 except Display.OutOfWindowBoundsException:
                     break
@@ -630,19 +654,25 @@ class Display(VisualInterface): # {{{2
             item_index,
             item,
             is_focal_item,
+            height=None,
+            width=None,
             ):
-        height, width = self.content_buffer_dimensions()
+        if height is None or width is None:
+            height, width = self.content_buffer_dimensions()
         row = height - item_index - 1
         if row < 0:
             raise Display.OutOfWindowBoundsException
-        if self.display_absolute_paths:
-            display_name = os.path.abspath(item.filepath)
+        if self.display_split_filename_and_dirname:
+            display_name = item.split_display_name
         else:
-            display_name = item.display_name
-        # self.content_buffer.move(row, 0)
-        # self.content_buffer.clrtoeol()
-        # -4: account for leader, and avoid writing at last position
-        display_name = truncate_middle(display_name, width-3).ljust(width-3)
+            if self.display_absolute_paths:
+                display_name = os.path.abspath(item.filepath)
+            else:
+                display_name = item.display_name
+            # self.content_buffer.move(row, 0)
+            # self.content_buffer.clrtoeol()
+            # -4: account for leader, and avoid writing at last position
+            display_name = truncate_middle(display_name, width-3).ljust(width-3)
         weight = curses.A_NORMAL
         color = self.default_color
         if item.is_selected:
@@ -659,9 +689,19 @@ class Display(VisualInterface): # {{{2
             self.content_buffer.addstr(row, 1, "  ", self.default_color)
         try:
             if item.score > 0:
-                left = display_name[:item.match_start]
-                main = display_name[item.match_start:item.match_end]
-                right = display_name[item.match_end:]
+                if self.display_split_filename_and_dirname:
+                    if self.whole_path_matching:
+                        left = display_name
+                        main = ""
+                        right = ""
+                    else:
+                        left = display_name[:item.match_start_offset]
+                        main = display_name[item.match_start_offset:item.match_end_offset]
+                        right = display_name[item.match_end_offset:]
+                else:
+                    left = display_name[:item.match_start]
+                    main = display_name[item.match_start:item.match_end]
+                    right = display_name[item.match_end:]
                 self.content_buffer.addstr(row, 3, left, color | weight)
                 self.content_buffer.addstr(row, 3 + len(left), main, self.match_color | weight)
                 self.content_buffer.addstr(row, 3 + len(left) + len(main), right, color | weight)
@@ -671,19 +711,23 @@ class Display(VisualInterface): # {{{2
             pass
 
     def write_status_bar(self,
-            match_type,
-            whole_path_matching,
-            search_path_info,
+            search_path_info=None,
+            whole_path_matching=None,
+            match_type=None,
             ):
+        if match_type is not None:
+            self.match_type = match_type
+        if whole_path_matching is not None:
+            self.whole_path_matching = whole_path_matching
         height, width = self.status_bar_window.dimensions()
         status_bar_components = []
-        if match_type == "fuzzy":
+        if self.match_type == "fuzzy":
             status_bar_components.append("[^E] expression: fuzzy  ")
-        elif match_type == "literal":
+        elif self.match_type == "literal":
             status_bar_components.append("[^E] expression: literal")
-        elif match_type == "regexp":
+        elif self.match_type == "regexp":
             status_bar_components.append("[^E] expression: regular")
-        if whole_path_matching:
+        if self.whole_path_matching:
             status_bar_components.append("[^W] match: whole path")
         else:
             status_bar_components.append("[^W] match: basename")
@@ -697,10 +741,10 @@ class Display(VisualInterface): # {{{2
         status_bar = status_bar.ljust(width)[:width]
         self.status_bar_window.write(status_bar)
 
-    def write_query(self, query_str, match_type,):
+    def write_query(self, query_str):
         height, width = self.query_window_dimensions()
         self.query_str = query_str
-        prompt = self.match_type_prompts[match_type]
+        prompt = self.match_type_prompts[self.match_type]
         q = (prompt + self.query_str)[:width] # probably makes more sense to truncate front of query?
         self.query_length = len(q)
         try:
@@ -1177,6 +1221,14 @@ class Entry(object):
     def _start_of_basename_in_filepath(self):
         return len(os.path.normpath(os.path.join(self._dirname, "x"))) - 1
 
+    def _get_match_start_offset(self):
+        return self._match_start_offset
+    match_start_offset = property(_get_match_start_offset)
+
+    def _get_match_end_offset(self):
+        return self._match_end_offset
+    match_end_offset = property(_get_match_end_offset)
+
     def _get_match_start(self):
         if self.whole_path_matching:
             return self._match_start_offset
@@ -1260,6 +1312,7 @@ class Selector(object): # {{{2
             path_up_fn=None,
             path_down_fn=None,
             display_absolute_paths=None,
+            display_split_filename_and_dirname=False,
             search_path_info=None,
             ):
         self.display = display
@@ -1270,6 +1323,7 @@ class Selector(object): # {{{2
         self.path_up_fn = path_up_fn
         self.path_down_fn = path_down_fn
         self.display_absolute_paths = display_absolute_paths
+        self.display_split_filename_and_dirname = display_split_filename_and_dirname
         self.search_path_info = search_path_info
 
     def apply_query(self, query_chars, source_items):
@@ -1433,7 +1487,8 @@ class Selector(object): # {{{2
                             for item in listed_items:
                                 item.clear_metadata()
                         focal_item_index = 0 # TODO: adjust this smartly
-
+                elif keycode.name == "CTRL-K":
+                    self.display_split_filename_and_dirname = not self.display_split_filename_and_dirname
                 elif keycode.name == "CTRL-L" or keycode.name == "EVENT-RESIZE":
                     # do nothing: just re-write
                     # pass
@@ -1475,14 +1530,15 @@ class Selector(object): # {{{2
                 match_type=self.match_type,
                 whole_path_matching=self.whole_path_matching,
                 display_absolute_paths=self.display_absolute_paths,
+                display_split_filename_and_dirname=self.display_split_filename_and_dirname,
                 search_path_info=self.search_path_info,
                 )
 
     def redisplay_status_bar(self):
         return self.display.write_status_bar(
+                search_path_info=self.search_path_info,
                 match_type=self.match_type,
                 whole_path_matching=self.whole_path_matching,
-                search_path_info=self.search_path_info,
                 )
 
     def run(self, items):
