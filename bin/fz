@@ -2073,9 +2073,9 @@ def parse_cli_args():  #{{{2
             help="Do not show progress of filesystem scanning.")
     search_options_section.add_argument(
             "--display-absolute-paths",
-            action="store_false",
+            action="store_true",
             dest="display_absolute_paths",
-            default=True,
+            default=False,
             help="Show absolute paths instead of relative paths in viewer.")
 
     query_options_section = parser.add_argument_group("Query Options")
