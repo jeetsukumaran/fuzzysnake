@@ -5,7 +5,7 @@
 
 ## Type <CTRL-F> to invoke
 ## FuzzySnake
-bind '"\C-f": "fz\n"'
+bind '"\C-f": "fz\n"' 2>/dev/null
 
 ## `fzd`: select and go to a directory
 function fzd() {
