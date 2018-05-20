@@ -331,7 +331,7 @@ the name of the selected path to a specified file, or the '`-1`'/'`--stdout`'
 flag to write out the name of the selected path to the standard output. This is
 typically used when using `FuzzySnake` as part of a custom shell function or
 command, such as the "fuzzily-change-directory" command described below and
-given in the example '`fztricks.sh`" file.
+given in the example '`fztricks.bash`" file.
 
 Selecting Multiple File and Directory Names
 -------------------------------------------
@@ -401,14 +401,14 @@ with the dynamic interactivity of `FuzzySnake`, add the following to your
 Enhancing Your Shell with FuzzySnake
 ------------------------------------
 
-The '`fztricks.sh`' file included with the `FuzzySnake` distribution includes
+The '`fztricks.bash`' file included with the `FuzzySnake` distribution includes
 some useful enhancements for your shell. To use them, source the file into you
 current session::
 
-    $ . fztricks.sh
+    $ . fztricks.bash
 
 If you like them enough to keep them permanently, copy the contents of the file
-'`fztricks.sh`' to your '`~/.bashrc`', or add a line in your '`~/.bashrc`' to
+'`fztricks.bash`' to your '`~/.bashrc`', or add a line in your '`~/.bashrc`' to
 source the file.
 
 These enhancements include:
@@ -427,6 +427,30 @@ These enhancements include:
         fi
         unset DESTDIR
     }
+
+- A command, `fzh`, to select a command from your history (adapted from the excellent and inspirational [fzf](https://github.com/junegunn/fzf.git); which, incidentally, I did not know about when I initially wrote this)::
+
+    function fzh() {
+        shopt -u nocaseglob nocasematch
+        local LINE
+        LINE=$(HISTTIMEFORMAT= history | fz --stdout --output-relative-paths -) &&
+        if [[ $- =~ H ]]; then
+        sed 's/^ *\([0-9]*\)\** .*/!\1/' <<< "$LINE"
+        else
+        sed 's/^ *\([0-9]*\)\** *//' <<< "$LINE"
+        fi
+    }
+
+   This is bound the the traditional history search key, '`<CTRL-R>`'::
+
+    if [[ ! -o vi ]]; then
+        # CTRL-R - Paste the selected command from history into the command line
+        bind '"\C-r": " \C-e\C-u\C-y\ey\C-u`fzh`\e\C-e\er\e^"'
+    else
+        # CTRL-R - Paste the selected command from history into the command line
+        bind '"\C-r": "\C-x\C-addi`fzh`\C-x\C-e\C-x\C-r\C-x^\C-x\C-a$a"'
+        bind -m vi-command '"\C-r": "i\C-r"'
+    fi
 
 - A command, `fzl`, to list the files in the selected search path(s)::
 

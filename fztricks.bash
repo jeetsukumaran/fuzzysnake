@@ -40,6 +40,28 @@ function fzl() {
     fz -L $@
 }
 
+## Select from history
+## Shamelessly adapted from the *excellent* and *inspirational*:
+## https://github.com/junegunn/fzf.git
+function fzh() {
+    shopt -u nocaseglob nocasematch
+    local LINE
+    LINE=$(HISTTIMEFORMAT= history | fz --stdout --output-relative-paths -) &&
+    if [[ $- =~ H ]]; then
+      sed 's/^ *\([0-9]*\)\** .*/!\1/' <<< "$LINE"
+    else
+      sed 's/^ *\([0-9]*\)\** *//' <<< "$LINE"
+    fi
+}
+if [[ ! -o vi ]]; then
+    # CTRL-R - Paste the selected command from history into the command line
+    bind '"\C-r": " \C-e\C-u\C-y\ey\C-u`fzh`\e\C-e\er\e^"'
+else
+    # CTRL-R - Paste the selected command from history into the command line
+    bind '"\C-r": "\C-x\C-addi`fzh`\C-x\C-e\C-x\C-r\C-x^\C-x\C-a$a"'
+    bind -m vi-command '"\C-r": "i\C-r"'
+fi
+
 ## `fzw` ("w" for "work"): change to directory of selected and edit
 function fzw() {
     local DIR
