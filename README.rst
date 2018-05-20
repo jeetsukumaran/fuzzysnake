@@ -441,16 +441,7 @@ These enhancements include:
         fi
     }
 
-   This is bound the the traditional history search key, '`<CTRL-R>`'::
-
-    if [[ ! -o vi ]]; then
-        # CTRL-R - Paste the selected command from history into the command line
-        bind '"\C-r": " \C-e\C-u\C-y\ey\C-u`fzh`\e\C-e\er\e^"'
-    else
-        # CTRL-R - Paste the selected command from history into the command line
-        bind '"\C-r": "\C-x\C-addi`fzh`\C-x\C-e\C-x\C-r\C-x^\C-x\C-a$a"'
-        bind -m vi-command '"\C-r": "i\C-r"'
-    fi
+   By default, unless '`$FUZZYSNAKE_SUPPRESS_SHELL_KEYBINDINGS`' is set to '`true`', then this will be bound to (and thus override) the traditional history search key, '`<CTRL-R>`'.
 
 - A command, `fzl`, to list the files in the selected search path(s)::
 
