@@ -435,7 +435,10 @@ class Display(VisualInterface): # {{{2
 
     ### Life-cycle
 
-    def __init__(self, stdscr):
+    def __init__(
+            self,
+            stdscr,
+            is_not_filesystem_path_entries=False):
         VisualInterface.__init__(self, stdscr=stdscr)
         self.content_buffer = None
         self.content_vscroll_offset = 0
@@ -455,6 +458,7 @@ class Display(VisualInterface): # {{{2
                 "regexp": "% ",
         }
         self.content_buffer_allocation_failure_extended_message = False
+        self.is_not_filesystem_path_entries = is_not_filesystem_path_entries
         self.start()
 
     def start(self):
@@ -668,7 +672,9 @@ class Display(VisualInterface): # {{{2
         if self.display_split_filename_and_dirname:
             display_name = item.split_display_name
         else:
-            if self.display_absolute_paths:
+            if self.is_not_filesystem_path_entries:
+                display_name = item.raw_name
+            elif self.display_absolute_paths:
                 display_name = os.path.abspath(item.filepath)
             else:
                 display_name = item.display_name
@@ -1216,6 +1222,10 @@ class Entry(object):
         else:
             self._filename = ""
     filename = property(_get_filename, _set_filename)
+
+    def _get_raw_name(self):
+        return self._filename
+    raw_name = property(_get_raw_name)
 
     def _get_filepath(self):
         return os.path.normpath(os.path.join(self._dirname, self._filename))
@@ -1887,7 +1897,9 @@ class Controller(object): # {{{2
     def __init__(self, subscreen, args):
         self.subscreen = subscreen
         self.args = args
-        self.display = Display(stdscr=self.subscreen.stdscr)
+        self.display = Display(
+            stdscr=self.subscreen.stdscr,
+            is_not_filesystem_path_entries=args.is_not_filesystem_path_entries)
         self.editor_path = os.environ.get("FUZZYSNAKE_EDITOR", os.environ.get("EDITOR", "vi"))
 
     def scan_search_paths(self, items=None, exit_on_interrupt=False, interrupt_exit_value=1):
@@ -2059,10 +2071,13 @@ class Controller(object): # {{{2
         selected = self.run_query()
         if not selected:
             self.exit(1) # raise error to let parent shell know nothing was selected
-        filepaths = [entry.filepath for entry in selected]
-        if filepaths:
-            self.apply_action(filepaths, as_subprocess=False)
-        return len(filepaths)
+        if self.args.is_not_filesystem_path_entries:
+            targets = [entry._filename for entry in selected] # more hacks
+        else:
+            targets = [entry.filepath for entry in selected]
+        if targets:
+            self.apply_action(targets, as_subprocess=False)
+        return len(targets)
 
     def print_list(self, out=None):
         items = self.scan_search_paths()
