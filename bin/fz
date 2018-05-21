@@ -1316,6 +1316,7 @@ class Selector(object): # {{{2
             display_absolute_paths=None,
             display_split_filename_and_dirname=False,
             search_path_info=None,
+            is_not_filesystem_path_entries=False,
             ):
         self.display = display
         self.ranker = ranker
@@ -1327,6 +1328,7 @@ class Selector(object): # {{{2
         self.display_absolute_paths = display_absolute_paths
         self.display_split_filename_and_dirname = display_split_filename_and_dirname
         self.search_path_info = search_path_info
+        self.is_not_filesystem_path_entries = is_not_filesystem_path_entries
 
     def apply_query(self, query_chars, source_items):
         if not query_chars:
@@ -1405,8 +1407,9 @@ class Selector(object): # {{{2
                 suppress_rewrite = False
                 if keycode.name == "CTRL-W":
                     # <CTRL-W>: Cycle whole-path vs. basename matching
-                    self.whole_path_matching = not self.whole_path_matching
-                    listed_items = self.apply_query(current_query_chars, source_items)
+                    if not self.is_not_filesystem_path_entries:
+                        self.whole_path_matching = not self.whole_path_matching
+                        listed_items = self.apply_query(current_query_chars, source_items)
                 elif keycode.name == "CTRL-E":
                     # <CTRL-E>: Cycle matching-modes
                     if self.match_type == "literal":
@@ -1443,7 +1446,8 @@ class Selector(object): # {{{2
                     else:
                         suppress_rewrite = True
                 elif keycode.name == "CTRL-R":
-                    self.display_absolute_paths = not self.display_absolute_paths
+                    if not self.is_not_filesystem_path_entries:
+                        self.display_absolute_paths = not self.display_absolute_paths
                 elif keycode.name == "CTRL-G":
                     # <CTRL-G> info
                     num_displayed_items = self.display.num_content_buffer_items()
@@ -1490,7 +1494,8 @@ class Selector(object): # {{{2
                                 item.clear_metadata()
                         focal_item_index = 0 # TODO: adjust this smartly
                 elif keycode.name == "CTRL-K":
-                    self.display_split_filename_and_dirname = not self.display_split_filename_and_dirname
+                    if not self.is_not_filesystem_path_entries:
+                        self.display_split_filename_and_dirname = not self.display_split_filename_and_dirname
                 elif keycode.name == "CTRL-L" or keycode.name == "EVENT-RESIZE":
                     # do nothing: just re-write
                     # pass
@@ -2086,6 +2091,7 @@ class Controller(object): # {{{2
                 path_down_fn=self.path_down,
                 display_absolute_paths=self.args.display_absolute_paths,
                 search_path_info=self.get_search_path_info(),
+                is_not_filesystem_path_entries=self.args.is_not_filesystem_path_entries,
                 )
         selected = selector.run(items)
         return selected
@@ -2146,6 +2152,12 @@ def parse_cli_args():  #{{{2
             dest="display_absolute_paths",
             default=False,
             help="Show absolute paths instead of relative paths in viewer.")
+    search_options_section.add_argument(
+            "--not-filesystem-paths",
+            dest="is_not_filesystem_path_entries",
+            action="store_true",
+            default=False,
+            help="Do not treat input as file/directory paths.")
 
     query_options_section = parser.add_argument_group("Query Options")
     query_options_section.add_argument(

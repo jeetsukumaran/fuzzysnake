@@ -72,7 +72,7 @@ function fzh() {
             | sed -e 's/[ \t]*$//' \
             | awk '{a[i++]=$0} END {for (j=i-1; j>=0;) print a[j--] }' \
             | awk '{ if (!h[$0]) { print $0; h[$0]=1 } }' \
-            | fz --stdout --output-relative-paths -)
+            | fz --stdout --not-filesystem-paths -)
     echo $LINE
 }
 
