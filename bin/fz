@@ -1297,13 +1297,19 @@ class Selector(object): # {{{2
         "<LEFT>,  <CTRL-U>  Move up to parent directories of current",
         "                   search paths and restart search from there.",
         "<CTRL-G>           Show information about current focal item.",
+        "<CTRL-Y>           Unhide Git-ignores.",
         "<ESC>, <CTRL-C>    Exit without executing any actions."
 
     )
 
     class ResetSourcesException(Exception):
         def __init__(self, source_items):
+            Exception.__init__(self)
             self.source_items = source_items
+
+    class RecalculateSourcesException(Exception):
+        def __init__(self):
+            Exception.__init__(self)
 
     def __init__(self,
             display,
@@ -1354,7 +1360,7 @@ class Selector(object): # {{{2
                     item.clear_metadata()
             return sorted(queried_items_items, key=lambda x: x.score)
 
-    def _loop(self, source_items):
+    def _loop(self, source_items, controller):
         current_query_chars = []
         focal_item_index = 0
         listed_items = list(source_items)
@@ -1505,6 +1511,9 @@ class Selector(object): # {{{2
                             focal_item_index=focal_item_index,
                             query_chars=current_query_chars,
                             )
+                elif keycode.name == "CTRL-Y" or keycode == "F2":
+                    controller.args.include_gitignores = not controller.args.include_gitignores
+                    raise Selector.RecalculateSourcesException
                 elif not keycode.is_special:
                     current_query_chars.append(keycode.name)
                     listed_items = self.apply_query(current_query_chars, source_items)
@@ -1548,10 +1557,10 @@ class Selector(object): # {{{2
                 whole_path_matching=self.whole_path_matching,
                 )
 
-    def run(self, items):
+    def run(self, items, controller):
         while True:
             try:
-                return self._loop(items)
+                return self._loop(items, controller)
             except Selector.ResetSourcesException as e:
                 items = e.source_items
 
@@ -2093,7 +2102,12 @@ class Controller(object): # {{{2
                 search_path_info=self.get_search_path_info(),
                 is_not_filesystem_path_entries=self.args.is_not_filesystem_path_entries,
                 )
-        selected = selector.run(items)
+        while True:
+            try:
+                selected = selector.run(items, controller=self)
+                break
+            except Selector.RecalculateSourcesException:
+                items = self.scan_search_paths()
         return selected
 
 # }}}2
