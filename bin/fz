@@ -1513,8 +1513,9 @@ class Selector(object): # {{{2
                             query_chars=current_query_chars,
                             )
                 elif keycode.name == "CTRL-Y" or keycode.name == "F2":
-                    controller.args.include_gitignores = not controller.args.include_gitignores
-                    raise Selector.RecalculateSourcesException
+                    if not self.is_not_filesystem_path_entries:
+                        controller.args.include_gitignores = not controller.args.include_gitignores
+                        raise Selector.RecalculateSourcesException
                 elif not keycode.is_special:
                     current_query_chars.append(keycode.name)
                     listed_items = self.apply_query(current_query_chars, source_items)
