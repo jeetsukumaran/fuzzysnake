@@ -147,7 +147,7 @@ class Subscreen(object): # {{{2
         # initialize screen
         self.stdscr = curses.initscr()
         curses.noecho()
-        curses.cbreak()
+        curses.raw()
         # self.stdscr.keypad(1)
         try:
             curses.start_color()
@@ -172,7 +172,7 @@ class Subscreen(object): # {{{2
         except curses.error:
             pass
         try:
-            curses.nocbreak()
+            curses.noraw()
         except curses.error:
             pass
         try:
@@ -1942,6 +1942,7 @@ class Controller(object): # {{{2
                             results=items,
                             suppress_progress_feedback=self.args.no_progress_window)
         except KeyboardInterrupt:
+            self.exit(interrupt_exit_value)
             if exit_on_interrupt:
                 self.exit(interrupt_exit_value)
         return items
