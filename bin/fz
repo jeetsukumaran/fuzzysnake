@@ -2081,7 +2081,9 @@ class Controller(object): # {{{2
         # raise KeyboardInterrupt()
 
     def compose_output_path(self, path):
-        if self.args.output_relative_paths:
+        if self.args.is_not_filesystem_path_entries:
+            f = path
+        elif self.args.output_relative_paths:
             f = os.path.relpath(path)
         else:
             f = os.path.abspath(path)
