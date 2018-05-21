@@ -42,15 +42,24 @@ function fzl() {
 ##      https://github.com/junegunn/fzf.git
 ##      Copyright (c) 2016 Junegunn Choi
 ##
+
 function fzh() {
     shopt -u nocaseglob nocasematch
     local LINE
-    LINE=$(HISTTIMEFORMAT= history | fz --stdout --output-relative-paths -) &&
+    local SEDEX
+    # LINE=$(HISTTIMEFORMAT= history | fz --stdout --output-relative-paths -) &&
+    # if [[ $- =~ H ]]; then
+    #   sed 's/^ *\([0-9]*\)\** .*/!\1/' <<< "$LINE"
+    # else
+    #   sed 's/^ *\([0-9]*\)\** *//' <<< "$LINE"
+    # fi
     if [[ $- =~ H ]]; then
-      sed 's/^ *\([0-9]*\)\** .*/!\1/' <<< "$LINE"
+        SEDEX='s/^ *[0-9]*\** \(.*\)/\1/'
     else
-      sed 's/^ *\([0-9]*\)\** *//' <<< "$LINE"
+        SEDEX='s/^ *\([0-9]*\)\** *//'
     fi
+    LINE=$(HISTTIMEFORMAT= history | sed "$SEDEX" | uniq | fz --stdout --output-relative-paths -)
+    echo $LINE
 }
 
 ## `fzw` ("w" for "work"): change to directory of selected and edit
@@ -92,22 +101,14 @@ function fzclip() {
     $(fz --stdout $@ | $FUZZYSNAKE_CLIPBOARD_COPY_COMMAND)
 }
 
-# supporting functions
-_get_abs_path() {
-  # $1 : relative filename
-  if [ -d "$(dirname "$1")" ]; then
-    echo "$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
-  fi
-}
-
-# key bindings
-##
-## Shamelessly adapted from the *excellent* and *inspirational* 'fzf':
-##
-##      https://github.com/junegunn/fzf.git
-##      Copyright (c) 2016 Junegunn Choi
+# Key bindings
 if [ ! $FUZZYSNAKE_SUPPRESS_SHELL_KEYBINDINGS ]
 then
+    ##
+    ## Shamelessly adapted from the *excellent* and *inspirational* 'fzf':
+    ##
+    ##      https://github.com/junegunn/fzf.git
+    ##      Copyright (c) 2016 Junegunn Choi
 
     ## Type <CTRL-F> to invoke
     ## FuzzySnake
