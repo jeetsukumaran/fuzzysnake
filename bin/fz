@@ -233,6 +233,7 @@ class VisualInterface(object): # {{{2
     KEYCODES[-67] = KeyCode(name="RIGHT", is_special=True)
     KEYCODES[-68] = KeyCode(name="LEFT", is_special=True)
     KEYCODES[-80] = KeyCode(name="F1", is_special=True)
+    KEYCODES[-81] = KeyCode(name="F2", is_special=True)
     KEYCODES[-1001] = KeyCode(name="EVENT-RESIZE", is_special=True)
 
     CANCEL_KEYCODES_NAMES = set(["ESC", "FS", "CTRL-C"])
@@ -1278,6 +1279,7 @@ class Selector(object): # {{{2
         "-------",
         "<CTRL-R>           Toggle between display whole or relative",
         "                   paths",
+        "<CTRL-Y>, <F2>     Unhide/Unhide Git-ignores.",
         "",
         "Selection",
         "---------",
@@ -1297,7 +1299,6 @@ class Selector(object): # {{{2
         "<LEFT>,  <CTRL-U>  Move up to parent directories of current",
         "                   search paths and restart search from there.",
         "<CTRL-G>           Show information about current focal item.",
-        "<CTRL-Y>           Unhide Git-ignores.",
         "<ESC>, <CTRL-C>    Exit without executing any actions."
 
     )
@@ -1511,7 +1512,7 @@ class Selector(object): # {{{2
                             focal_item_index=focal_item_index,
                             query_chars=current_query_chars,
                             )
-                elif keycode.name == "CTRL-Y" or keycode == "F2":
+                elif keycode.name == "CTRL-Y" or keycode.name == "F2":
                     controller.args.include_gitignores = not controller.args.include_gitignores
                     raise Selector.RecalculateSourcesException
                 elif not keycode.is_special:
