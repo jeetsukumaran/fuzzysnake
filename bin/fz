@@ -106,7 +106,9 @@ def truncate_middle(line, length=70, truncation_str="..."):
     if reduce_amt <= 0 or length <= 0:
         return line
     reduce_amt += len(truncation_str) # for the ellipsis
-    start = (len(line) / 2) - (reduce_amt / 2)
+    start = int(len(line) / 2) - int(reduce_amt / 2)
+    if start < 0:
+        start = 0
     end = start + reduce_amt
     return "{}{}{}".format(line[:start], truncation_str, line[end:])
 # }}}1
